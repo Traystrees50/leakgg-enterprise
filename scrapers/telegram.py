@@ -1010,7 +1010,9 @@ class TelegramScraper:
             date_el = wrap.find(class_="tgme_widget_message_date")
             time_el = wrap.find("time")
 
-            msg_url = date_el.get("href") if date_el else f"https://t.me/{clean_name}"
+            msg_url = date_el.get("href") if date_el else None
+            if not msg_url:
+                msg_url = f"https://t.me/{clean_name}"
             msg_text = text_el.get_text(separator="\n").strip() if text_el else ""
             img_url = self.extract_image_url_from_wrap(wrap)
 

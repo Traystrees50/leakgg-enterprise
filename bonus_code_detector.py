@@ -51,7 +51,7 @@ _EVENT_NAME_PATTERNS = [
 ]
 
 _RE_EVENT_NAME_EXPLICIT = re.compile(
-    r"(?:EVENT[:\s=]+|NAME[:\s=]+)([A-Za-z0-9][A-Za-z0-9\s\-_]{2,40})",
+    r"(?:EVENT[:=]+|NAME[:=]+)\s*([A-Za-z0-9][A-Za-z0-9\s\-_]{2,40})",
     re.I,
 )
 

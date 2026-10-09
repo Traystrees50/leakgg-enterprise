@@ -2375,5 +2375,206 @@ Period: July 4 → July 11"""
         if os.path.exists(tmp_routes):
             os.remove(tmp_routes)
 
+    def test_should_ocr_code_detects_placeholders(self):
+        from bonus_code_detector import should_ocr_code
+
+        self.assertTrue(should_ocr_code("CHECK_IMAGE_FOR_CODE_#49"))
+        self.assertTrue(should_ocr_code("CHECK_IMAGE_FOR_CODE"))
+        self.assertTrue(should_ocr_code("DEGEN_DROP_#123"))
+        self.assertTrue(should_ocr_code("QZINO_EVENT_#5"))
+        self.assertTrue(should_ocr_code("QZINO_PROMO"))
+        self.assertTrue(should_ocr_code("STAKE_US_WEEKLY_BOOST_#10"))
+        self.assertTrue(should_ocr_code("STAKE_COM_MONTHLY_BONUS_#7"))
+
+        self.assertFalse(should_ocr_code("DEGENWIN"))
+        self.assertFalse(should_ocr_code("STAKEUSCODE123"))
+        self.assertFalse(should_ocr_code(""))
+        self.assertFalse(should_ocr_code(None))
+
+    def test_detect_event_from_message(self):
+        from bonus_code_detector import detect_event_from_message
+
+        result = detect_event_from_message("Weekly Boost for Stake.com! Claim by 2026-09-15")
+        self.assertEqual(result["event_type"], "WEEKLY BOOST")
+        self.assertEqual(result["event_name"], "Weekly Boost")
+        self.assertIsNotNone(result["event_datetime"])
+
+        result2 = detect_event_from_message("VIP Notice: high roller drop alert!")
+        self.assertEqual(result2["event_type"], "VIP NOTICE")
+        self.assertEqual(result2["event_name"], "VIP Notice")
+
+        result3 = detect_event_from_message("Monthly Bonus for all players!")
+        self.assertEqual(result3["event_type"], "MONTHLY BONUS")
+        self.assertEqual(result3["event_name"], "Monthly Bonus")
+
+        result4 = detect_event_from_message("Standard drop, no event keywords")
+        self.assertEqual(result4["event_type"], "DROP")
+        self.assertEqual(result4["event_name"], "Bonus Drop")
+
+        result5 = detect_event_from_message("")
+        self.assertEqual(result5["event_type"], "DROP")
+        self.assertIsNone(result5["event_name"])
+
+    def test_ocr_client_extract_code(self):
+        from scrapers.ocr import OCRClient
+
+        client = OCRClient(api_key="test-key")
+        self.assertTrue(client.is_available)
+
+        code = client.extract_code("Bonus Code: MFQP3DSN  Wager: $4,000")
+        self.assertEqual(code, "MFQP3DSN")
+
+        code2 = client.extract_code("CLAIM YOUR CODE HERE STAKE7XK9 NOW")
+        self.assertEqual(code2, "STAKE7XK9")
+
+        code3 = client.extract_code("Claim Amount: $5.00 Wager: $4,000 Claims: 150")
+        self.assertIsNone(code3)
+
+        client_no_key = OCRClient(api_key=None)
+        self.assertFalse(client_no_key.is_available)
+
+    def test_resolve_placeholder_code_with_mock_ocr(self):
+        from bonus_code_detector import resolve_placeholder_code
+        from scrapers.ocr import OCRClient
+
+        mock_client = MagicMock(spec=OCRClient)
+        mock_client.is_available = True
+        mock_client.ocr_code = MagicMock(return_value="REALCODE123")
+
+        item = BonusCodeItem(
+            code="CHECK_IMAGE_FOR_CODE_#49",
+            platform=Platform.DEGEN,
+            amount_value="$5.00 Drop",
+            wager_requirement="$4,000",
+            source_url="https://t.me/degendotcom/49",
+            source_name="@degendotcom",
+            is_affiliate=False,
+            image_url="https://cdn4.telesco.pe/file/pHHR6Eb.jpg",
+        )
+
+        resolved = resolve_placeholder_code(item, ocr_client=mock_client)
+        self.assertEqual(resolved.code, "REALCODE123")
+        mock_client.ocr_code.assert_called_once_with("https://cdn4.telesco.pe/file/pHHR6Eb.jpg")
+
+    def test_resolve_placeholder_code_preserves_when_not_placeholder(self):
+        from bonus_code_detector import resolve_placeholder_code
+
+        mock_client = MagicMock()
+        mock_client.is_available = True
+
+        item = BonusCodeItem(
+            code="DEGENWIN",
+            platform=Platform.DEGEN,
+            amount_value="$5.00 Drop",
+            wager_requirement="$4,000",
+            source_url="https://t.me/degendotcom/49",
+            source_name="@degendotcom",
+            is_affiliate=False,
+            image_url="https://cdn4.telesco.pe/file/pHHR6Eb.jpg",
+        )
+
+        resolved = resolve_placeholder_code(item, ocr_client=mock_client)
+        self.assertEqual(resolved.code, "DEGENWIN")
+
+    def test_resolve_placeholder_code_no_image(self):
+        from bonus_code_detector import resolve_placeholder_code
+
+        mock_client = MagicMock()
+        mock_client.is_available = True
+
+        item = BonusCodeItem(
+            code="CHECK_IMAGE_FOR_CODE_#49",
+            platform=Platform.DEGEN,
+            amount_value="$5.00 Drop",
+            wager_requirement="$4,000",
+            source_url="https://t.me/degendotcom/49",
+            source_name="@degendotcom",
+            is_affiliate=False,
+            image_url=None,
+        )
+
+        resolved = resolve_placeholder_code(item, ocr_client=mock_client)
+        self.assertEqual(resolved.code, "CHECK_IMAGE_FOR_CODE_#49")
+        mock_client.ocr_code.assert_not_called()
+
+    def test_resolve_placeholder_code_no_ocr_key(self):
+        from bonus_code_detector import resolve_placeholder_code
+
+        item = BonusCodeItem(
+            code="CHECK_IMAGE_FOR_CODE_#49",
+            platform=Platform.DEGEN,
+            amount_value="$5.00 Drop",
+            wager_requirement="$4,000",
+            source_url="https://t.me/degendotcom/49",
+            source_name="@degendotcom",
+            is_affiliate=False,
+            image_url="https://cdn4.telesco.pe/file/pHHR6Eb.jpg",
+        )
+
+        resolved = resolve_placeholder_code(item)
+        self.assertEqual(resolved.code, "CHECK_IMAGE_FOR_CODE_#49")
+
+    def test_resolve_placeholder_code_from_bytes(self):
+        from bonus_code_detector import resolve_placeholder_code
+
+        mock_client = MagicMock()
+        mock_client.is_available = True
+        mock_client.ocr_code_from_bytes = MagicMock(return_value="OCRBYTECODE")
+
+        item = BonusCodeItem(
+            code="DEGEN_DROP_#12",
+            platform=Platform.DEGEN,
+            amount_value="$5.00 Drop",
+            wager_requirement="$4,000",
+            source_url="https://t.me/degendotcom/12",
+            source_name="@degendotcom",
+            is_affiliate=False,
+            image_url=None,
+        )
+
+        resolved = resolve_placeholder_code(item, ocr_client=mock_client, photo_bytes=b"fake-image-bytes")
+        self.assertEqual(resolved.code, "OCRBYTECODE")
+        mock_client.ocr_code_from_bytes.assert_called_once_with(b"fake-image-bytes")
+
+    def test_telegram_scrape_channel_ocr_integration(self):
+        from scrapers.telegram import TelegramScraper
+        from unittest.mock import patch
+
+        tg = TelegramScraper()
+
+        html = '''
+        <html>
+        <body>
+        <div class="tgme_widget_message_wrap js-widget_message_wrap">
+          <div class="tgme_widget_message js-widget_message">
+            <div class="tgme_widget_message_bubble">
+              <a class="tgme_widget_message_photo_wrap" style="background-image:url('https://cdn4.telesco.pe/file/degen_graphic.jpg')"></a>
+              <div class="tgme_widget_message_text js-message_text">Promo Code Drop! 7 Day Wager: $4,000 Claim Amount: $5.00</div>
+              <a class="tgme_widget_message_date" href="https://t.me/degendotcom/49"><time datetime="2026-10-05T12:00:00+00:00"></time></a>
+            </div>
+          </div>
+        </div>
+        </body></html>
+        '''
+
+        with patch.object(tg, "fetch_channel_html", return_value=html):
+            with patch("scrapers.telegram.is_event_recent", return_value=(True, "")):
+                with patch("scrapers.telegram.resolve_placeholder_code", side_effect=lambda x, **kw: x) as mock_resolve:
+                    items = tg.scrape_channel("degendotcom")
+                    self.assertEqual(len(items), 1)
+                    self.assertEqual(items[0].code, "CHECK_IMAGE_FOR_CODE_#49")
+                    mock_resolve.assert_called_once()
+
+        def replace_code(item, **kwargs):
+            item.code = "DEGENOCR123"
+            return item
+
+        with patch("scrapers.telegram.resolve_placeholder_code", side_effect=replace_code):
+            with patch.object(tg, "fetch_channel_html", return_value=html):
+                with patch("scrapers.telegram.is_event_recent", return_value=(True, "")):
+                    items = tg.scrape_channel("degendotcom")
+                    self.assertEqual(len(items), 1)
+                    self.assertEqual(items[0].code, "DEGENOCR123")
+
 if __name__ == "__main__":
     unittest.main()
