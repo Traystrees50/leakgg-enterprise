@@ -2152,23 +2152,81 @@ def run_discord_bot():
                 pass
 
     # ----------------------------------------------------
-    # Information & Guide Command
+    # Information & Guide Commands (Consolidated)
     # ----------------------------------------------------
-    @bot.hybrid_command(name="info", aliases=["about", "guide"], with_app_command=True, description="Active Codes bot overview, supported platforms, and usage guide")
-    async def cmd_info(ctx: commands.Context):
+    @bot.hybrid_command(
+        name="help",
+        aliases=["info", "about", "guide", "commands"],
+        with_app_command=True,
+        description="Unified help menu: bot overview, available commands, platform links, and subscription info"
+    )
+    async def cmd_help(ctx: commands.Context):
         """
-        Displays concise bot guide, supported platforms, and quick command overview.
+        Consolidated help command. Merges /info, /help, /commands, and /links
+        into a single unified embed-based menu.
+        Usage: /help [section]
+        Sections: info, commands, links (default: all)
         """
-        embed = create_info_embed()
+        embed = discord.Embed(
+            title=f"📖 {BOT_NAME} — Enterprise Bot Guide",
+            description="Always-On Active Bonus Code & Low Wager Drop Monitoring Engine\n🔒 Admin features require `/subscribe` ($2 crypto) or server admin role.",
+            color=0x1475E1
+        )
+        embed.add_field(
+            name="🎁 Public Commands",
+            value=(
+                "• `/codes` [platform] — Query StakeStats.net for currently active drops.\n"
+                "  *Examples:* `/codes` (all), `/codes stake.com`, `/codes stake.us`, `/codes qzino`, `/codes degen`\n"
+                "  *Aliases:* `/activecodes`, `/livecodes`, `/activecom`, `/activecodesus`\n"
+                "• `/info` — Bot overview, supported platforms, and theme palette.\n"
+                "• `/help` — Display this unified usage guide.\n"
+                "• `/links` — View all affiliate/signup links for every platform.\n"
+                "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
+                "• `/dashboard` — Personal routing dashboard for your server channels, DMs, and webhooks."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
+            value=(
+                "• `/startmonitor` — Start background real-time scanner.\n"
+                "• `/status` — View real-time monitor status, interval, and database counts.\n"
+                "• `/dashboard` — Full interactive multi-platform control panel.\n"
+                "• `/code` or `!code` — Validate and broadcast a bonus code to your authorized routes.\n"
+                "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
+                "• `/embed-editor` — View and edit embed formats for each platform."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="👥 Admin Management (Owner / Server Admin)",
+            value=(
+                "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
+                "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
+                "• `/admin subscribers` — List all active subscribers with expiration info.\n"
+                "• `/admin` — Unified admin management panel."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="💎 $2 Crypto Subscription Access",
+            value=(
+                "Users can subscribe for **$2 in any crypto (USD value)** to gain full access to the `/dashboard` "
+                "and bind multiple custom channel IDs and webhooks per platform.\n"
+                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
+            ),
+            inline=False
+        )
+        embed.set_footer(text=f"{BOT_NAME} Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
         await ctx.send(embed=embed)
 
-    @bot.hybrid_command(name="subscribe", with_app_command=True, description="Subscribe for $2 in crypto to unlock full dashboard access")
-    async def cmd_subscribe(ctx: commands.Context):
+    @bot.hybrid_command(name="links", with_app_command=True, description="View all affiliate/signup links for every platform (alias for /help links)")
+    async def cmd_links(ctx: commands.Context):
         """
-        Public subscription command. Displays instructions for tipping $2 in any crypto
-        to @traystrees50 to unlock premium dashboard access in any server.
+        Displays all affiliate/signup links for every supported platform.
+        Backward-compatible: redirects to /help which includes links section.
         """
-        embed = create_subscribe_embed()
+        embed = create_links_embed()
         await ctx.send(embed=embed)
 
     # ----------------------------------------------------
@@ -2227,106 +2285,52 @@ def run_discord_bot():
             background_monitoring_sweep.start()
         await ctx.send("🟢 Real-time bonus code monitoring has been **STARTED**.")
 
-    @bot.hybrid_command(name="grant", with_app_command=True, description="Grant full dashboard access to a user (owner/admin only)")
-    async def cmd_grant(ctx: commands.Context, user_id: str, note: str = "Granted by admin", duration: str = "lifetime"):
-        """
-        Grants full dashboard access to a user by ID or username.
-        Duration options: lifetime, 1month, 7days.
-        Restricted to project owner and server administrators.
-        """
-        if not manager.is_owner(ctx.author.id) and not _has_admin_access(ctx.author):
-            embed = create_unauthorized_embed()
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-
-        uid = user_id.strip()
-        duration = duration.strip().lower()
-        if uid.isdigit():
-            uid = int(uid)
-        manager.add_subscriber(uid, note=note, role="subscriber", duration=duration)
-        await ctx.send(f"✅ Granted full dashboard access to `{uid}` ({note}) — Duration: **{duration}**.", ephemeral=True)
-
-    @bot.hybrid_command(name="revoke", with_app_command=True, description="Revoke subscriber dashboard access from a user (owner/admin only)")
-    async def cmd_revoke(ctx: commands.Context, user_id: str):
-        """
-        Revokes dashboard access from a subscriber by ID or username.
-        Restricted to project owner and server administrators.
-        """
-        if not manager.is_owner(ctx.author.id) and not _has_admin_access(ctx.author):
-            embed = create_unauthorized_embed()
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-
-        uid = user_id.strip()
-        if uid.isdigit():
-            uid = int(uid)
-        removed = manager.remove_subscriber(uid)
-        if removed:
-            await ctx.send(f"✅ Revoked dashboard access from `{uid}`.", ephemeral=True)
-        else:
-            await ctx.send(f"❌ User `{uid}` is not a subscriber or is the owner.", ephemeral=True)
-
-    @bot.hybrid_command(name="subscribers", with_app_command=True, description="List all active subscribers with expiration info (owner only)")
-    async def cmd_subscribers(ctx: commands.Context):
-        """
-        Lists all active subscribers with their expiration dates.
-        Restricted to project owner only.
-        """
-        if not manager.is_owner(ctx.author.id):
-            embed = create_unauthorized_embed()
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-
-        subscribers = manager.get_subscribers()
-        if not subscribers:
-            await ctx.send("No active subscribers found.", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title=f"👥 {BOT_NAME} — Active Subscribers",
-            description="List of all subscribers with expiration info.",
-            color=0x1475E1
-        )
-        for uid, data in subscribers.items():
-            duration = data.get("duration", "lifetime")
-            expires = data.get("expires_at", "Never")
-            role = data.get("role", "subscriber")
-            active = "🟢 Active" if data.get("active", False) else "🔴 Inactive"
-            note = data.get("note", "")
-            granted = data.get("granted_at", "Unknown")
-            embed.add_field(
-                name=f"<@{uid}> ({uid})",
-                value=f"**Status:** {active}\n**Role:** {role}\n**Duration:** {duration}\n**Expires:** {expires}\n**Granted:** {granted}\n**Note:** {note}",
-                inline=False
-            )
-        embed.set_footer(text=f"{BOT_NAME} • Subscriber Management", icon_url=BOT_AVATAR_URL)
-        await ctx.send(embed=embed)
-
     # ----------------------------------------------------
-    # On-Demand Code Polling & Scan Commands
+    # On-Demand Code Polling & Scan Commands (Consolidated)
     # ----------------------------------------------------
-    @bot.hybrid_command(name="activecodes", aliases=["livecodes"], with_app_command=True, description="Query and display live active bonus drop codes for Stake.us & Stake.com")
-    async def cmd_activecodes(ctx: commands.Context):
+    @bot.hybrid_command(
+        name="codes",
+        aliases=["activecodes", "livecodes"],
+        with_app_command=True,
+        description="Query and display live active bonus drop codes. Optional platform filter: stake.com, stake.us, qzino, degen, etc."
+    )
+    async def cmd_codes(ctx: commands.Context, platform: str = "all"):
         """
-        Polls https://stakestats.net/stake/tools/code live and displays active codes for Stake.us and Stake.com.
-        All codes are shown in a single embed, sorted by value (low to high), grouped by platform.
+        Polls StakeStats live API and displays active codes.
+        Usage: /codes [platform]
+        Examples:
+          /codes — All platforms
+          /codes stake.com — Stake.com only
+          /codes stake.us — Stake.us only
+          /codes qzino — Qzino only
+          /codes degen — Degen only
+        Backward-compatible: /activecodes, /activecom, /activecodesus, /livecodes all redirect here.
         """
-        logger.info(f"User {ctx.author} requested /activecodes command. Polling StakeStats live...")
+        logger.info(f"User {ctx.author} requested /codes command (platform={platform}). Polling StakeStats live...")
         loop = asyncio.get_running_loop()
         try:
             await ctx.defer()
         except discord.NotFound:
             return
         except Exception as defer_err:
-            logger.error(f"Failed to defer activecodes interaction: {defer_err}")
+            logger.error(f"Failed to defer codes interaction: {defer_err}")
+
+        plat_filter = None
+        if platform and platform.lower() != "all":
+            plat_filter = Platform.from_str(platform)
+            if plat_filter == Platform.UNKNOWN:
+                await ctx.send(f"❌ Unknown platform: `{platform}`. Valid: stake.com, stake.us, qzino, degen, etc.", ephemeral=True)
+                return
+
         try:
             embed_dicts = await asyncio.wait_for(
-                loop.run_in_executor(None, poller.format_discord_active_list),
+                loop.run_in_executor(None, lambda: poller.format_discord_active_list(plat_filter)),
                 timeout=30
             )
 
             if not embed_dicts:
-                await ctx.send("No active Stake.us or Stake.com codes were reported right now.")
+                filter_msg = f" for **{plat_filter.value}**" if plat_filter else ""
+                await ctx.send(f"No active Stake.us or Stake.com codes were reported right now{filter_msg}.")
                 return
 
             for page_number, ed in enumerate(embed_dicts):
@@ -2336,9 +2340,9 @@ def run_discord_bot():
                 else:
                     await ctx.send(embed=embed)
         except asyncio.TimeoutError:
-            await ctx.send("⏱️ The Activecodes query timed out. Please try again.", ephemeral=True)
+            await ctx.send("⏱️ The codes query timed out. Please try again.", ephemeral=True)
         except Exception as e:
-            logger.error(f"Error in /activecodes command: {e}", exc_info=True)
+            logger.error(f"Error in /codes command: {e}", exc_info=True)
             try:
                 await ctx.send(f"❌ An error occurred while fetching active codes: {str(e)[:200]}", ephemeral=True)
             except Exception:
@@ -2363,97 +2367,18 @@ def run_discord_bot():
             logger.error(f"Error in filtered active-code command: {e}", exc_info=True)
             await ctx.send("❌ Unable to retrieve active codes right now.", ephemeral=True)
 
-    @bot.hybrid_command(name="activecom", with_app_command=True, description="Display only active Stake.com bonus codes")
+    # Backward-compatible aliases for platform-filtered codes
+    @bot.hybrid_command(name="activecom", with_app_command=True, description="Display only active Stake.com bonus codes (alias for /codes stake.com)")
     async def cmd_activecom(ctx: commands.Context):
         await send_filtered_active_codes(ctx, Platform.STAKE_COM)
 
-    @bot.hybrid_command(name="activecodesus", with_app_command=True, description="Display only active Stake.us bonus codes")
+    @bot.hybrid_command(name="activecodesus", with_app_command=True, description="Display only active Stake.us bonus codes (alias for /codes stake.us)")
     async def cmd_activecodesus(ctx: commands.Context):
         await send_filtered_active_codes(ctx, Platform.STAKE_US)
 
-    @bot.hybrid_command(name="commands", with_app_command=True, description="List all available Active Codes commands")
-    async def cmd_commands(ctx: commands.Context):
-        embed = discord.Embed(
-            title=f"📋 {BOT_NAME} — Available Commands",
-            description="Use `/command` in Discord to execute any of these.\n🔒 Admin-only commands require `/subscribe` ($2 crypto) or server admin role.",
-            color=0x1475E1
-        )
-        embed.add_field(
-            name="🎁 Public Commands",
-            value="• `/activecodes` — Query StakeStats live for active Stake.us & Stake.com drops\n"
-                  "• `/info` — Bot overview & supported platforms\n"
-                  "• `/help` — Detailed usage guide and platform links\n"
-                  "• `/links` — View all affiliate/signup links for every platform\n"
-                  "• `/subscribe` — Unlock full dashboard access for $2 in any crypto\n"
-                  "• `/dashboard` — Personal routing dashboard with subscriber access controls\n"
-                  "• `/code` — Validate and broadcast a bonus code to authorized routes",
-            inline=False
-        )
-        embed.add_field(
-            name="🔒 Admin-Only Commands (Owner / Subscriber / Server Admin)",
-            value="• `/startmonitor` — Start real-time background monitoring sweeps\n"
-                  "• `/status` — View monitor status, polling interval, and tracked code counts\n"
-                  "• `/dashboard` — Full interactive routing & webhook control panel\n"
-                  "• `/code` or `!code` — Validate and broadcast a bonus code to authorized routes\n"
-                  "• `!post` — Manually broadcast a raw event/post to selected platform channels\n"
-                  "• `/embed-editor` — View and edit embed formats for each platform",
-            inline=False
-        )
-        embed.add_field(
-            name="💎 Premium Access",
-            value=(
-                "Subscribe for **$2 in any crypto (USD value)** to unlock all admin commands.\n"
-                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
-            ),
-            inline=False
-        )
-        embed.set_footer(text=f"{BOT_NAME} • Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
-        await ctx.send(embed=embed)
-
-    @bot.hybrid_command(name="help", with_app_command=True, description="Display Active Codes monitoring guide, commands, and platform links")
-    async def cmd_help(ctx: commands.Context):
-        embed = discord.Embed(
-            title=f"📖 {BOT_NAME} — Enterprise Bot Guide",
-            description="Always-On Active Bonus Code & Low Wager Drop Monitoring Engine\n🔒 Admin features require `/subscribe` ($2 crypto) or server admin role.",
-            color=0x1475E1
-        )
-        embed.add_field(
-            name="🎁 Public Commands",
-            value=(
-                "• `/activecodes` — Query StakeStats.net for currently active Stake.us & Stake.com drops.\n"
-                "• `/info` — Bot overview, supported platforms, and theme palette.\n"
-                "• `/help` — Display this usage guide.\n"
-                "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
-                "• `/dashboard` — Personal routing dashboard for your server channels, DMs, and webhooks."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
-            value=(
-                "• `/startmonitor` — Start background real-time scanner.\n"
-                "• `/status` — View real-time monitor status, interval, and database counts.\n"
-                "• `/dashboard` — Full interactive multi-platform control panel.\n"
-                "• `/code` or `!code` — Validate and broadcast a bonus code to your authorized routes.\n"
-                "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
-                "• `/embed-editor` — View and edit embed formats for each platform."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="💎 $2 Crypto Subscription Access",
-            value=(
-                "Users can subscribe for **$2 in any crypto (USD value)** to gain full access to the `/dashboard` "
-                "and bind multiple custom channel IDs and webhooks per platform.\n"
-                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
-            ),
-            inline=False
-        )
-        embed.set_footer(text=f"{BOT_NAME} Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
-        await ctx.send(embed=embed)
-
-    def create_links_embed() -> discord.Embed:
+    # ----------------------------------------------------
+    # Information & Guide Commands (Consolidated)
+    # ----------------------------------------------------
         """
         Generates a comprehensive affiliate/signup links embed for all platforms.
         """
@@ -2521,14 +2446,6 @@ def run_discord_bot():
         )
         embed.set_footer(text=f"{BOT_NAME} • Affiliate Links", icon_url=BOT_AVATAR_URL)
         return embed
-
-    @bot.hybrid_command(name="links", with_app_command=True, description="View all affiliate/signup links for every platform")
-    async def cmd_links(ctx: commands.Context):
-        """
-        Displays all affiliate/signup links for every supported platform.
-        """
-        embed = create_links_embed()
-        await ctx.send(embed=embed)
 
     class ManualPostModal(discord.ui.Modal):
         def __init__(self, platforms: List[str], manager: DashboardManager, bot: commands.Bot):
@@ -2886,6 +2803,87 @@ def run_discord_bot():
         )
         embed.set_footer(text=f"{BOT_NAME} • Embed Editor", icon_url=BOT_AVATAR_URL)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    # ----------------------------------------------------
+    # Admin Command Group (Consolidated: grant, revoke, subscribers)
+    # ----------------------------------------------------
+    # ----------------------------------------------------
+    # Admin Command Group (Consolidated: grant, revoke, subscribers)
+    # ----------------------------------------------------
+    @bot.group(name="admin", with_app_command=True, description="Admin management commands: grant, revoke, and subscriber listing")
+    async def admin_group(ctx: commands.Context):
+        if not ctx.invoked_subcommand:
+            embed = discord.Embed(
+                title="Admin Management",
+                description="Available admin commands:\n"
+                            "• `/admin grant <user_id>` — Grant dashboard access\n"
+                            "• `/admin revoke <user_id>` — Revoke subscriber access\n"
+                            "• `/admin subscribers` — List all active subscribers",
+                color=0x1475E1
+            )
+            await ctx.send(embed=embed)
+
+    @admin_group.command(name="grant", description="Grant full dashboard access to a user (owner/admin only)")
+    async def admin_grant(ctx: commands.Context, user_id: str, note: str = "Granted by admin", duration: str = "lifetime"):
+        if not manager.is_owner(ctx.author.id) and not _has_admin_access(ctx.author):
+            embed = create_unauthorized_embed()
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+
+        uid = user_id.strip()
+        duration = duration.strip().lower()
+        if uid.isdigit():
+            uid = int(uid)
+        manager.add_subscriber(uid, note=note, role="subscriber", duration=duration)
+        await ctx.send(f"Granted full dashboard access to {uid} ({note}) - Duration: {duration}.", ephemeral=True)
+
+    @admin_group.command(name="revoke", description="Revoke subscriber dashboard access from a user (owner/admin only)")
+    async def admin_revoke(ctx: commands.Context, user_id: str):
+        if not manager.is_owner(ctx.author.id) and not _has_admin_access(ctx.author):
+            embed = create_unauthorized_embed()
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+
+        uid = user_id.strip()
+        if uid.isdigit():
+            uid = int(uid)
+        removed = manager.remove_subscriber(uid)
+        if removed:
+            await ctx.send(f"Revoked dashboard access from {uid}.", ephemeral=True)
+        else:
+            await ctx.send(f"User {uid} is not a subscriber or is the owner.", ephemeral=True)
+
+    @admin_group.command(name="subscribers", description="List all active subscribers with expiration info (owner only)")
+    async def admin_subscribers(ctx: commands.Context):
+        if not manager.is_owner(ctx.author.id):
+            embed = create_unauthorized_embed()
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+
+        subscribers = manager.get_subscribers()
+        if not subscribers:
+            await ctx.send("No active subscribers found.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"{BOT_NAME} - Active Subscribers",
+            description="List of all subscribers with expiration info.",
+            color=0x1475E1
+        )
+        for uid, data in subscribers.items():
+            duration = data.get("duration", "lifetime")
+            expires = data.get("expires_at", "Never")
+            role = data.get("role", "subscriber")
+            active = "Active" if data.get("active", False) else "Inactive"
+            note = data.get("note", "")
+            granted = data.get("granted_at", "Unknown")
+            embed.add_field(
+                name=f"<@{uid}> ({uid})",
+                value=f"**Status:** {active}\n**Role:** {role}\n**Duration:** {duration}\n**Expires:** {expires}\n**Granted:** {granted}\n**Note:** {note}",
+                inline=False
+            )
+        embed.set_footer(text=f"{BOT_NAME} - Subscriber Management", icon_url=BOT_AVATAR_URL)
+        await ctx.send(embed=embed)
 
     try:
         bot.run(DISCORD_BOT_TOKEN, log_handler=None)
