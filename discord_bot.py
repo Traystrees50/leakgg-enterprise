@@ -35,20 +35,14 @@ def _has_admin_access(user: discord.abc.User) -> bool:
 
 def create_unauthorized_embed() -> discord.Embed:
     """
-    Generates a clean embed informing non-authorized users of the owner restriction
-    and how to subscribe for $2 in any cryptocurrency.
+    Generates a clean embed informing non-authorized users of the owner restriction.
     """
     embed = discord.Embed(
         title="🔒 Access Restricted — Owner / Subscriber Access Only",
         description=(
             f"Administrative and platform routing configuration is restricted to the Project Creator & Owner (<@{OWNER_USER_ID}>) "
             "and active subscribers.\n\n"
-            "### 💎 Subscribe for $2 (Any Cryptocurrency in USD Value)\n"
-            "You can unlock full access to the interactive Dashboard, personal channel bindings, and custom platform webhooks for just **$2.00 USD** in any crypto (BTC, LTC, USDT, SOL, ETH, etc.).\n\n"
-            "**How to activate your subscription:**\n"
-            f"1. Join our Official Discord: [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
-            f"2. Contact Project Owner <@{OWNER_USER_ID}> with your tx hash / username.\n"
-            "3. Your User ID will be activated instantly to configure all platform drops!"
+            "DM the Project Owner to inquire about premium dashboard access."
         ),
         color=0xFF1493
     )
@@ -68,26 +62,13 @@ def create_unauthorized_embed() -> discord.Embed:
 def create_subscribe_embed() -> discord.Embed:
     """
     Generates a subscription information embed guiding users on how to
-    inquire about premium dashboard access for broadcasting platform bonus codes.
+    inquire about premium dashboard access.
     """
     embed = discord.Embed(
         title="📋 Premium Dashboard Access — Inquiry Required",
         description=(
             "Unlock the full **Interactive Dashboard** with multi-platform routing, custom webhooks, "
-            "and real-time monitoring controls across all your servers.\n\n"
-            "### 📋 Subscription Benefits\n"
-            "• ✅ Full access to `/dashboard` interactive control panel\n"
-            "• ✅ Bind custom channel IDs and webhooks per platform\n"
-            "• ✅ Add/remove monitored Telegram & Web Review sources\n"
-            "• ✅ Test route dispatch and real-time monitoring controls\n"
-            "• ✅ Works in any server where this bot is present\n\n"
-            "### 📝 How to Get Access\n"
-            f"1. **DM <@{OWNER_USER_ID}>** on Discord and say: \"I want to broadcast platform bonus codes in my server\"\n"
-            f"2. **Join the Official Discord:** [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
-            f"3. **Open a ticket** in the Discord server and describe your server setup needs\n"
-            f"4. Once approved, your Discord User ID will be **activated instantly** for full dashboard access!\n\n"
-            "### ⚡ Instant Activation\n"
-            "Once activated, you can use `/dashboard` or `!dashboard` anywhere the bot is installed."
+            "and real-time monitoring controls across all your servers."
         ),
         color=0x10B981
     )
@@ -174,17 +155,7 @@ def create_info_embed() -> discord.Embed:
             "• `/help` — Detailed usage guide and platform links.\n"
             "• `/commands` — View all available commands.\n"
             "• `/links` — View all affiliate/signup links for every platform.\n"
-            "• `/subscribe` — Unlock full dashboard access for $2 in any crypto."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="💎 $2 Crypto Subscription Access",
-        value=(
-            "Users can subscribe for **$2 in any crypto (USD value)** to gain full access to a personal `/dashboard` "
-            "and bind their own server channels, DMs, and webhooks per platform without changing other users' routes.\n"
-            f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
+            "• `/subscribe` — Inquire about premium dashboard access."
         ),
         inline=False
     )
@@ -477,29 +448,15 @@ def create_sources_embed(manager: DashboardManager) -> discord.Embed:
 def create_public_dashboard_embed() -> discord.Embed:
     """
     Generates a public-facing dashboard embed showing all affiliate/signup links
-    and prompting users to subscribe for $2 in crypto to unlock full admin access.
+    and routing configuration for non-authorized users.
     """
     embed = discord.Embed(
-        title=f"💎 {BOT_NAME} — Public Dashboard",
+        title=f"🎛️ {BOT_NAME} — Public Dashboard",
         description=(
-            "Welcome to the **Active Codes** public dashboard!\n\n"
-            "Below are all platform affiliate/signup links. To unlock the **full interactive control panel** "
-            "with multi-platform routing, custom webhooks, embed editing, and real-time monitoring controls, "
-            "you need to subscribe.\n\n"
-            "### 💎 Unlock Full Dashboard Access — $2 Crypto Subscription\n"
-            "• ✅ Full `/dashboard` interactive control panel\n"
-            "• ✅ Bind custom channel IDs and webhooks per platform\n"
-            "• ✅ Add/remove monitored Telegram & Web Review sources\n"
-            "• ✅ Edit embed templates (author, title, description, thumbnail, footer, fields)\n"
-            "• ✅ Test route dispatch and real-time monitoring controls\n"
-            "• ✅ Grant access to other users\n\n"
-            "### 📝 How to Subscribe\n"
-            f"1. **Tip $2 USD** in any crypto to **@traystrees50**\n"
-            f"2. **Join the Official Discord:** [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
-            f"3. **Open a ticket** or DM <@{OWNER_USER_ID}> with your transaction hash / username\n"
-            f"4. Your Discord User ID will be **activated instantly** for full dashboard access!\n\n"
-            "### ⚡ Instant Activation\n"
-            "Once activated, you can use `/dashboard` or `!dashboard` anywhere the bot is installed."
+            "Welcome to the **Active Codes** public dashboard.\n\n"
+            "Below are all platform affiliate/signup links and routing configuration. "
+            "Authorized users can open the **full interactive control panel** "
+            "with multi-platform routing, custom webhooks, embed editing, and real-time monitoring controls."
         ),
         color=0x1475E1
     )
@@ -562,30 +519,22 @@ def create_public_dashboard_embed() -> discord.Embed:
         inline=False
     )
 
-    embed.set_footer(text=f"{BOT_NAME} • Public Dashboard • Subscribe for full access", icon_url=BOT_AVATAR_URL)
+    embed.set_footer(text=f"{BOT_NAME} • Public Dashboard", icon_url=BOT_AVATAR_URL)
     return embed
 
 
 class PublicDashboardView(discord.ui.View):
     """
     Public dashboard view for non-authorized users.
-    Shows affiliate links and a subscribe prompt.
+    Shows affiliate links and community links.
     """
     def __init__(self, timeout: Optional[float] = 600):
         super().__init__(timeout=timeout)
-        self.add_item(discord.ui.Button(label="💎 /subscribe", style=discord.ButtonStyle.success, row=0, custom_id="public_subscribe"))
         self.add_item(discord.ui.Button(label="💬 Join Discord", style=discord.ButtonStyle.link, row=0, url=DISCORD_INVITE_URL))
         self.add_item(discord.ui.Button(label="🎥 Follow on Kick", style=discord.ButtonStyle.link, row=0, url="https://www.kick.com/traystrees50"))
         self.add_item(discord.ui.Button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=1, custom_id="public_refresh"))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.data.get("custom_id") == "public_subscribe":
-            await interaction.response.send_message(
-                "To unlock full dashboard access, tip **$2 USD** in any crypto to **@traystrees50** "
-                "and DM <@1051355279511519273> with your tx hash. Your User ID will be activated instantly!",
-                ephemeral=True
-            )
-            return False
         if interaction.data.get("custom_id") == "public_refresh":
             embed = create_public_dashboard_embed()
             await interaction.response.edit_message(embed=embed, view=self)
@@ -2247,7 +2196,7 @@ def run_discord_bot():
         name="help",
         aliases=["about", "guide"],
         with_app_command=True,
-        description="Unified help menu: bot overview, available commands, platform links, and subscription info"
+        description="Unified help menu: bot overview, available commands, and platform links"
     )
     async def cmd_help(ctx: commands.Context):
         """
@@ -2258,7 +2207,7 @@ def run_discord_bot():
         """
         embed = discord.Embed(
             title=f"📖 {BOT_NAME} — Enterprise Bot Guide",
-            description="Always-On Active Bonus Code & Low Wager Drop Monitoring Engine\n🔒 Admin features require `/subscribe` ($2 crypto) or server admin role.",
+            description="Always-On Active Bonus Code & Low Wager Drop Monitoring Engine.",
             color=0x1475E1
         )
         embed.add_field(
@@ -2273,7 +2222,7 @@ def run_discord_bot():
                 "• `/help` — Display this unified usage guide.\n"
                 "• `/commands` — List all available commands.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
+                "• `/subscribe` — Inquire about premium dashboard access.\n"
                 "• `/dashboard` — Personal routing dashboard, your server channels, DMs, and webhooks."
             ),
             inline=False
@@ -2301,10 +2250,9 @@ def run_discord_bot():
             inline=False
         )
         embed.add_field(
-            name="💎 Dashboard Access",
+            name="💬 Community",
             value=(
-                "If you're interested in having platform bonus codes broadcasted in your own server "
-                "and channels or webhooks, DM <@{OWNER_USER_ID}> and inquire about premium access.\n"
+                "DM <@{OWNER_USER_ID}> to inquire about premium dashboard access.\n"
                 f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
             ),
             inline=False
@@ -2323,7 +2271,7 @@ def run_discord_bot():
         """Standalone /commands command — lists all available commands."""
         embed = discord.Embed(
             title=f"📋 {BOT_NAME} — Available Commands",
-            description="Use `/command` in Discord to execute any of these.\n🔒 Admin-only commands require `/subscribe` ($2 crypto) or server admin role.",
+            description="Use `/command` in Discord to execute any of these.\n🔒 Admin-only commands require subscriber access or a server admin role.",
             color=0x1475E1
         )
         embed.add_field(
@@ -2337,7 +2285,7 @@ def run_discord_bot():
                 "• `/info` — Bot overview, supported platforms, and theme palette.\n"
                 "• `/help` — Display this unified usage guide.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
+                "• `/subscribe` — Inquire about premium dashboard access.\n"
                 "• `/dashboard` — Personal routing dashboard, your server channels, DMs, and webhooks."
             ),
             inline=False
@@ -2365,19 +2313,19 @@ def run_discord_bot():
             inline=False
         )
         embed.add_field(
-            name="💎 $2 Crypto Subscription Access",
+            name="💬 Community",
             value=(
-                "Subscribe for **$2 in any crypto (USD value)** to unlock all admin commands.\n"
-                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
+                "DM <@{OWNER_USER_ID}> to inquire about premium dashboard access.\n"
+                f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
             ),
             inline=False
         )
         embed.set_footer(text=f"{BOT_NAME} • Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
         await ctx.send(embed=embed)
 
-    @bot.hybrid_command(name="subscribe", with_app_command=True, description="Subscribe for $2 in crypto to unlock full dashboard access")
+    @bot.hybrid_command(name="subscribe", with_app_command=True, description="Inquire about premium dashboard access")
     async def cmd_subscribe(ctx: commands.Context):
-        """Standalone /subscribe command — public subscription instructions."""
+        """Standalone /subscribe command — premium access inquiry."""
         embed = create_subscribe_embed()
         await ctx.send(embed=embed)
 

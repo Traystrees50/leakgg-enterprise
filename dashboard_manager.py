@@ -159,9 +159,9 @@ class DashboardManager:
             return True
         return False
 
-    def add_subscriber(self, user_id: Union[int, str], note: str = "Active $2 Crypto Subscriber", role: str = "subscriber", duration: str = "lifetime") -> None:
+    def add_subscriber(self, user_id: Union[int, str], note: str = "Active Subscriber", role: str = "subscriber", duration: str = "lifetime") -> None:
         """
-        Grants full bot dashboard configuration access to a user (e.g. after verifying $2 crypto payment).
+        Grants full bot dashboard configuration access to a user.
         Supports duration: 'lifetime', '1month' (30 days), or '7days' (7 days).
         """
         from datetime import datetime, timedelta, timezone
