@@ -68,10 +68,10 @@ def create_unauthorized_embed() -> discord.Embed:
 def create_subscribe_embed() -> discord.Embed:
     """
     Generates a subscription information embed guiding users on how to
-    purchase premium dashboard access for $2 in any cryptocurrency.
+    inquire about premium dashboard access for broadcasting platform bonus codes.
     """
     embed = discord.Embed(
-        title="💎 Premium Dashboard Access — $2 Crypto Subscription",
+        title="📋 Premium Dashboard Access — Inquiry Required",
         description=(
             "Unlock the full **Interactive Dashboard** with multi-platform routing, custom webhooks, "
             "and real-time monitoring controls across all your servers.\n\n"
@@ -81,13 +81,11 @@ def create_subscribe_embed() -> discord.Embed:
             "• ✅ Add/remove monitored Telegram & Web Review sources\n"
             "• ✅ Test route dispatch and real-time monitoring controls\n"
             "• ✅ Works in any server where this bot is present\n\n"
-            "### 💰 Price: **$2.00 USD** (any cryptocurrency)\n"
-            "Accepted: BTC, LTC, USDT, SOL, ETH, and more.\n\n"
-            "### 📝 How to Subscribe\n"
-            f"1. **Tip $2** in any crypto to **@traystrees50**\n"
+            "### 📝 How to Get Access\n"
+            f"1. **DM <@{OWNER_USER_ID}>** on Discord and say: \"I want to broadcast platform bonus codes in my server\"\n"
             f"2. **Join the Official Discord:** [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
-            f"3. **Open a ticket** or DM <@{OWNER_USER_ID}> with your transaction hash / username\n"
-            f"4. Your Discord User ID will be **activated instantly** for full dashboard access!\n\n"
+            f"3. **Open a ticket** in the Discord server and describe your server setup needs\n"
+            f"4. Once approved, your Discord User ID will be **activated instantly** for full dashboard access!\n\n"
             "### ⚡ Instant Activation\n"
             "Once activated, you can use `/dashboard` or `!dashboard` anywhere the bot is installed."
         ),
@@ -104,8 +102,8 @@ def create_subscribe_embed() -> discord.Embed:
         inline=True
     )
     embed.add_field(
-        name="💎 Price",
-        value="$2.00 USD in any crypto",
+        name="📋 Access Type",
+        value="Inquiry-Based",
         inline=True
     )
     embed.set_footer(text=f"{BOT_NAME} • Premium Subscription", icon_url=BOT_AVATAR_URL)
@@ -1404,6 +1402,87 @@ class DashboardView(discord.ui.View):
         new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
         await interaction.response.edit_message(embeds=new_embed, view=self)
 
+    @discord.ui.button(label="📝 Submitted Codes", style=discord.ButtonStyle.primary, row=3, emoji="📝")
+    async def btn_submitted_codes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Opens the submitted-codes routing settings panel."""
+        modal = SubmittedCodesRoutingModal(self.manager, self, self.subscriber_uid)
+        await interaction.response.send_modal(modal)
+
+
+# ----------------------------------------------------
+# Submitted Codes Routing Settings
+# ----------------------------------------------------
+class SubmittedCodesRoutingModal(discord.ui.Modal):
+    """Modal for configuring where manually submitted codes get sent."""
+    def __init__(self, manager: DashboardManager, parent_view, subscriber_uid: Optional[str] = None):
+        super().__init__(title="📝 Submitted Codes Routing")
+        self.manager = manager
+        self.parent_view = parent_view
+        self.subscriber_uid = subscriber_uid
+
+        self.platform_select = discord.ui.Select(
+            label="Target Platform",
+            placeholder="Select platform for submitted codes",
+            options=[
+                discord.SelectOption(label="Stake.us", value="Stake.us"),
+                discord.SelectOption(label="Stake.com", value="Stake.com"),
+                discord.SelectOption(label="Shuffle.us", value="Shuffle.us"),
+                discord.SelectOption(label="Shuffle.com", value="Shuffle.com"),
+                discord.SelectOption(label="Qzino", value="Qzino"),
+                discord.SelectOption(label="Rainbet", value="Rainbet"),
+                discord.SelectOption(label="Degen", value="Degen"),
+                discord.SelectOption(label="Goated", value="Goated"),
+                discord.SelectOption(label="Dual Stake", value="Dual Stake"),
+            ],
+            row=0
+        )
+        self.platform_select.callback = self._on_platform_select
+        self.add_item(self.platform_select)
+
+        self.channel_input = discord.ui.TextInput(
+            label="Channel ID (optional)",
+            placeholder="Discord channel ID where submitted codes should be posted",
+            required=False,
+            max_length=20,
+            style=discord.TextStyle.short
+        )
+        self.add_item(self.channel_input)
+
+        self.webhook_input = discord.ui.TextInput(
+            label="Webhook URL (optional)",
+            placeholder="Discord webhook URL for submitted codes",
+            required=False,
+            max_length=200,
+            style=discord.TextStyle.short
+        )
+        self.add_item(self.webhook_input)
+
+    async def _on_platform_select(self, interaction: discord.Interaction):
+        self.selected_platform = self.platform_select.values[0] if self.platform_select.values else None
+
+    async def on_submit(self, interaction: discord.Interaction):
+        platform = getattr(self, "selected_platform", None) or "Stake.us"
+        channel_id = self.channel_input.value.strip() if self.channel_input.value else None
+        webhook_url = self.webhook_input.value.strip() if self.webhook_input.value else None
+
+        if self.subscriber_uid:
+            if channel_id and channel_id.isdigit():
+                self.manager.add_subscriber_channel(self.subscriber_uid, platform, int(channel_id))
+            if webhook_url:
+                self.manager.add_subscriber_webhook(self.subscriber_uid, platform, webhook_url)
+        else:
+            if channel_id and channel_id.isdigit():
+                self.manager.set_channel(platform, int(channel_id))
+            if webhook_url:
+                self.manager.set_webhook(platform, webhook_url)
+
+        await interaction.response.send_message(
+            f"✅ Submitted codes routing updated for **{platform}**:\n"
+            f"  • Channel: `{channel_id or 'unchanged'}`\n"
+            f"  • Webhook: `{webhook_url[:30] + '...' if webhook_url and len(webhook_url) > 30 else webhook_url or 'unchanged'}`",
+            ephemeral=True
+        )
+
 
 # ----------------------------------------------------
 # Embed Editor Dashboard
@@ -2156,7 +2235,7 @@ def run_discord_bot():
     # ----------------------------------------------------
     @bot.hybrid_command(
         name="help",
-        aliases=["info", "about", "guide", "commands"],
+        aliases=["about", "guide"],
         with_app_command=True,
         description="Unified help menu: bot overview, available commands, platform links, and subscription info"
     )
@@ -2178,11 +2257,14 @@ def run_discord_bot():
                 "• `/codes` [platform] — Query StakeStats.net for currently active drops.\n"
                 "  *Examples:* `/codes` (all), `/codes stake.com`, `/codes stake.us`, `/codes qzino`, `/codes degen`\n"
                 "  *Aliases:* `/activecodes`, `/livecodes`, `/activecom`, `/activecodesus`\n"
+                "• `/codechecker` — Check a bonus code status (Active/Expired) with instant claim link.\n"
+                "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
                 "• `/info` — Bot overview, supported platforms, and theme palette.\n"
                 "• `/help` — Display this unified usage guide.\n"
+                "• `/commands` — List all available commands.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
                 "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
-                "• `/dashboard` — Personal routing dashboard for your server channels, DMs, and webhooks."
+                "• `/dashboard` — Personal routing dashboard, your server channels, DMs, and webhooks."
             ),
             inline=False
         )
@@ -2209,15 +2291,84 @@ def run_discord_bot():
             inline=False
         )
         embed.add_field(
-            name="💎 $2 Crypto Subscription Access",
+            name="💎 Dashboard Access",
             value=(
-                "Users can subscribe for **$2 in any crypto (USD value)** to gain full access to the `/dashboard` "
-                "and bind multiple custom channel IDs and webhooks per platform.\n"
-                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
+                "If you're interested in having platform bonus codes broadcasted in your own server "
+                "and channels or webhooks, DM <@{OWNER_USER_ID}> and inquire about premium access.\n"
+                f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
             ),
             inline=False
         )
         embed.set_footer(text=f"{BOT_NAME} Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
+        await ctx.send(embed=embed)
+
+    @bot.hybrid_command(name="info", with_app_command=True, description="Bot overview, supported platforms, and theme palette")
+    async def cmd_info(ctx: commands.Context):
+        """Standalone /info command — bot overview and supported platforms."""
+        embed = create_info_embed()
+        await ctx.send(embed=embed)
+
+    @bot.hybrid_command(name="commands", with_app_command=True, description="List all available Active Codes commands")
+    async def cmd_commands(ctx: commands.Context):
+        """Standalone /commands command — lists all available commands."""
+        embed = discord.Embed(
+            title=f"📋 {BOT_NAME} — Available Commands",
+            description="Use `/command` in Discord to execute any of these.\n🔒 Admin-only commands require `/subscribe` ($2 crypto) or server admin role.",
+            color=0x1475E1
+        )
+        embed.add_field(
+            name="🎁 Public Commands",
+            value=(
+                "• `/codes` [platform] — Query StakeStats.net for currently active drops.\n"
+                "  *Examples:* `/codes` (all), `/codes stake.com`, `/codes stake.us`, `/codes qzino`, `/codes degen`\n"
+                "  *Aliases:* `/activecodes`, `/livecodes`, `/activecom`, `/activecodesus`\n"
+                "• `/codechecker` — Check a bonus code status (Active/Expired) with instant claim link.\n"
+                "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
+                "• `/info` — Bot overview, supported platforms, and theme palette.\n"
+                "• `/help` — Display this unified usage guide.\n"
+                "• `/links` — View all affiliate/signup links for every platform.\n"
+                "• `/subscribe` — Unlock full dashboard access for $2 in any crypto.\n"
+                "• `/dashboard` — Personal routing dashboard, your server channels, DMs, and webhooks."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
+            value=(
+                "• `/startmonitor` — Start background real-time scanner.\n"
+                "• `/status` — View real-time monitor status, interval, and database counts.\n"
+                "• `/dashboard` — Full interactive multi-platform control panel.\n"
+                "• `/code` or `!code` — Validate and broadcast a bonus code to authorized routes.\n"
+                "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
+                "• `/embed-editor` — View and edit embed formats for each platform."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="👥 Admin Management (Owner / Server Admin)",
+            value=(
+                "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
+                "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
+                "• `/admin subscribers` — List all active subscribers with expiration info.\n"
+                "• `/grant`, `/revoke`, `/subscribers` — Standalone aliases for the above."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="💎 $2 Crypto Subscription Access",
+            value=(
+                "Subscribe for **$2 in any crypto (USD value)** to unlock all admin commands.\n"
+                f"Contact <@{OWNER_USER_ID}> or visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to activate."
+            ),
+            inline=False
+        )
+        embed.set_footer(text=f"{BOT_NAME} • Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
+        await ctx.send(embed=embed)
+
+    @bot.hybrid_command(name="subscribe", with_app_command=True, description="Subscribe for $2 in crypto to unlock full dashboard access")
+    async def cmd_subscribe(ctx: commands.Context):
+        """Standalone /subscribe command — public subscription instructions."""
+        embed = create_subscribe_embed()
         await ctx.send(embed=embed)
 
     @bot.hybrid_command(name="links", with_app_command=True, description="View all affiliate/signup links for every platform (alias for /help links)")
