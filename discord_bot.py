@@ -130,8 +130,6 @@ def create_info_embed() -> discord.Embed:
     platform_palette = (
             "• 🇺🇸 **Stake.us** — `Orange` • Social Casino Drops & VIP Boosts\n"
             "• 🌍 **Stake.com** — `Deep Pink` • Global Crypto Drops & High Rollers\n"
-            "• 👑 **Stake.us - VIP Notices** — `Warm Amber` • VIP Weekly/Monthly Notices\n"
-            "• 👑 **Stake.com - VIP Notices** — `Soft Pink` • VIP Weekly/Monthly Notices\n"
             "• 🔀 **Shuffle.us** — `White` • US Social Casino Bonus Drops\n"
             "• 🟣 **Shuffle.com** — `Purple` • Verified Crypto Casino Drops\n"
             "• 🎲 **Qzino** — `Gold Yellow` • AI Promos & Media Drops\n"
@@ -2118,7 +2116,12 @@ def run_discord_bot():
             logger.error(f"Failed to sync slash commands: {e}", exc_info=True)
 
     async def _cleanup_old_slash_commands(bot):
-        allowed_names = {"activecodes", "activecom", "activecodesus", "startmonitor", "dashboard", "info", "help", "commands", "status", "subscribe", "embed-editor", "post", "links", "grant", "revoke", "subscribers"}
+        allowed_names = {
+            "codes", "activecodes", "activecom", "activecodesus", "livecodes",
+            "help", "info", "commands", "links", "subscribe", "dashboard",
+            "status", "startmonitor", "embed-editor", "post", "code", "codechecker",
+            "admin", "grant", "revoke", "subscribers",
+        }
         cleaned = {"global": 0, "guilds": {}}
 
         try:
@@ -2159,9 +2162,16 @@ def run_discord_bot():
         print(f" ✅ {BOT_NAME} DISCORD BOT IS ONLINE & RUNNING", flush=True)
         print(f" Connected User: {bot.user} (ID: {bot.user.id})", flush=True)
         print(f" Realtime Monitor: {'ENABLED (Every ' + str(interval_secs) + 's)' if manager.get_setting('realtime_monitoring_enabled', True) else 'PAUSED'}", flush=True)
-        print(f" Slash Commands: /activecodes, /activecom, /activecodesus, /info, /help, /commands, /links, /subscribe, /dashboard, /startmonitor, /status, /post, /embed-editor, /grant, /revoke, /subscribers", flush=True)
-        print(f" Prefix Commands: !activecodes, !info, !help, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
+        print(f" Slash Commands: /codes, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /status, /startmonitor, /post, /code, /embed-editor, /admin, /grant, /revoke, /subscribers", flush=True)
+        print(f" Prefix Commands: !codes, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
         print(f"==================================================================\n", flush=True)
+
+        # Full command sync: clear old commands and sync current tree
+        try:
+            await bot.tree.sync()
+            logger.info("Global slash commands synced successfully.")
+        except Exception as e:
+            logger.error(f"Failed to sync slash commands: {e}")
 
         await _cleanup_old_slash_commands(bot)
 
@@ -2443,7 +2453,7 @@ def run_discord_bot():
         name="codes",
         aliases=["activecodes", "livecodes"],
         with_app_command=True,
-        description="Query and display live active bonus drop codes. Optional platform filter: stake.com, stake.us, qzino, degen, etc."
+        description="Query StakeStats for active bonus drops. Usage: /codes [platform]"
     )
     async def cmd_codes(ctx: commands.Context, platform: str = "all"):
         """
@@ -2539,46 +2549,32 @@ def run_discord_bot():
             color=0x1475E1
         )
         embed.add_field(
-            name="🎰 Casino & Social Platforms",
+            name="🤝 Partnered Offers",
             value=(
                 "• 🇺🇸 **Stake.us:** [stake.us/?c=selfmade](https://www.stake.us/?c=selfmade)\n"
                 "• 🌏 **Stake.com:** [stake.com/?c=SELFMADE](https://stake.com/?c=SELFMADE)\n"
-                "• 👑 **Stake.us - VIP Notices:** [stake.us/?c=selfmade](https://www.stake.us/?c=selfmade)\n"
-                "• 👑 **Stake.com - VIP Notices:** [stake.com/?c=SELFMADE](https://stake.com/?c=SELFMADE)\n"
                 "• 🔀 **Shuffle.us:** [shuffle.us/?r=selfmade](https://shuffle.us/?r=selfmade)\n"
-                "• 🟣 **Shuffle.com:** [shuffle.com/?r=selfmade](https://shuffle.com/?r=selfmade)"
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="🎲 AI, Media & Niche Platforms",
-            value=(
+                "• 🟣 **Shuffle.com:** [shuffle.com/?r=selfmade](https://shuffle.com/?r=selfmade)\n"
                 "• 🎲 **Qzino:** [qzino.ai/?r=SELFMADE](https://qzino.ai/?r=SELFMADE)\n"
-                "• 🌧️ **Rainbet:** [rainbet.com/?r=murphy](https://rainbet.com/?r=murphy)\n"
-                "• 🔥 **Degen:** [degen.com/r/selfmade](https://degen.com/r/selfmade)\n"
-                "• 🐐 **Goated:** [goated.com/?r=selfmade](https://goated.com/?r=selfmade)"
+                "• 🌧️ **Rainbet:** [rainbet.com/?r=murphy](https://rainbet.com/?r=murphy)"
             ),
             inline=False
         )
         embed.add_field(
-            name="💎 Partner Platforms",
+            name="📦 Other Platforms",
             value=(
+                "• 🔥 **Degen:** [degen.com/r/selfmade](https://degen.com/r/selfmade)\n"
+                "• 🐐 **Goated:** [goated.com/?r=selfmade](https://goated.com/?r=selfmade)\n"
                 "• 💎 **MYPRIZE.US:** [myprize.us/invite/Traystrees50](https://myprize.us/invite/Traystrees50)\n"
-                "• 👑 **CrownCoins:** [crowncoinscasino.com](https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends)\n"
+                "• 👑 **CrownCoins:** [crowncoinscasino.com](https://crowncoinscasino.com/)\n"
                 "• 🎁 **RealPrize:** [realprize.com/refer/212990](https://www.realprize.com/refer/212990)\n"
                 "• 🎰 **AceBet Casino:** [acebet.cc/welcome/r/selfmade](https://acebet.cc/welcome/r/selfmade)\n"
                 "• ⭐ **LoneStar Casino:** [lonestarcasino.com/refer/869128](https://lonestarcasino.com/refer/869128)\n"
                 "• 🍀 **Chanced Casino:** [chanced.com/c/v5a5yh](https://chanced.com/c/v5a5yh)\n"
                 "• 💎 **PULSZ:** [pulsz.com/?invited_by=ga1vnk](https://www.pulsz.com/?invited_by=ga1vnk)\n"
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="💎 Partner Platforms Continued",
-            value=(
                 "• 🎢 **THRILL:** [thrill.com/?r=selfmade](https://thrill.com/?r=selfmade)\n"
                 "• 🎮 **MODO:** [modo.us/?referralCode=Z901K9](https://modo.us/?referralCode=Z901K9)\n"
-                "• 🎰 **BABA:** [play.babacasino.com](https://play.babacasino.com/#/?referral_id=5403a829ac9926527b94e7c068708e07&inv_referral=true&fb_source=invite)\n"
+                "• 🎰 **BABA:** [play.babacasino.com](https://play.babacasino.com/)\n"
                 "• 🍳 **COOKED.US:** [cooked.us/?auth=register&referral_source=SELFMADE](https://cooked.us/?auth=register&referral_source=SELFMADE)\n"
                 "• 🍳 **COOKED.COM:** [cooked.com/?auth=register&referral_source=SELFMADE](https://cooked.com/?auth=register&referral_source=SELFMADE)\n"
                 "• 🌟 **WOWVEGAS:** [wowvegas.com/?raf=1274028](https://www.wowvegas.com/?raf=1274028)\n"
@@ -2646,44 +2642,42 @@ def run_discord_bot():
             self.selected_platforms: List[str] = []
 
             self.platform_select = discord.ui.Select(
-                placeholder="🎯 Select Platform(s) to Post To...",
+                placeholder="Select Platform(s) to Post To...",
                 min_values=1,
                 max_values=24,
                 options=[
-                    discord.SelectOption(label="Stake.us", description="Stake.us Social Casino", emoji="🇺🇸"),
-                    discord.SelectOption(label="Stake.com", description="Stake.com Global Crypto", emoji="🌍"),
-                    discord.SelectOption(label="Stake.us - VIP Notices", description="Stake.us VIP Notices", emoji="👑"),
-                    discord.SelectOption(label="Stake.com - VIP Notices", description="Stake.com VIP Notices", emoji="👑"),
-                    discord.SelectOption(label="Shuffle.us", description="Shuffle.us US Social Casino", emoji="🔀"),
-                    discord.SelectOption(label="Shuffle.com", description="Shuffle.com Crypto Casino", emoji="🟣"),
-                    discord.SelectOption(label="Rainbet", description="Rainbet Instant Bonus Drops", emoji="🌧️"),
-                    discord.SelectOption(label="Degen", description="Degen Drops with Media", emoji="🔥"),
-                    discord.SelectOption(label="Qzino", description="Qzino AI Promotions", emoji="🎲"),
-                    discord.SelectOption(label="Goated", description="Goated VIP Drops", emoji="🐐"),
-                    discord.SelectOption(label="MYPRIZE.US", description="MYPRIZE.US Exclusive Offers", emoji="💎"),
-                    discord.SelectOption(label="CrownCoins", description="CrownCoins Social Casino Sweeps", emoji="👑"),
-                    discord.SelectOption(label="RealPrize", description="RealPrize Referral Rewards", emoji="🎁"),
-                    discord.SelectOption(label="AceBet Casino", description="AceBet Crypto Casino Drops", emoji="🎰"),
-                    discord.SelectOption(label="LoneStar Casino", description="LoneStar Texas-Style Promos", emoji="⭐"),
-                    discord.SelectOption(label="Chanced Casino", description="Chanced Lucky Drop Events", emoji="🍀"),
-                    discord.SelectOption(label="PULSZ", description="PULSZ Platform", emoji="💎"),
-                    discord.SelectOption(label="THRILL", description="THRILL Platform", emoji="🎢"),
-                    discord.SelectOption(label="MODO", description="MODO Platform", emoji="🎮"),
-                    discord.SelectOption(label="BABA", description="BABA Casino", emoji="🎰"),
-                    discord.SelectOption(label="COOKED.US", description="COOKED.US Platform", emoji="🍳"),
-                    discord.SelectOption(label="COOKED.COM", description="COOKED.COM Platform", emoji="🍳"),
-                    discord.SelectOption(label="WOWVEGAS", description="WOWVEGAS Platform", emoji="🌟"),
-                    discord.SelectOption(label="YAYCASINO", description="YAYCASINO Platform", emoji="🎉"),
-                    discord.SelectOption(label="WINNA", description="WINNA Platform", emoji="🏆"),
-                    discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined", emoji="🎰"),
-                    discord.SelectOption(label="Default", description="Default / Global Fallback", emoji="🌐"),
+                    discord.SelectOption(label="Stake.us", description="Stake.us Social Casino", emoji="US"),
+                    discord.SelectOption(label="Stake.com", description="Stake.com Global Crypto", emoji="GLOBE"),
+                    discord.SelectOption(label="Shuffle.us", description="Shuffle.us US Social Casino", emoji="SHUFFLE"),
+                    discord.SelectOption(label="Shuffle.com", description="Shuffle.com Crypto Casino", emoji="PURPLE"),
+                    discord.SelectOption(label="Rainbet", description="Rainbet Instant Bonus Drops", emoji="RAIN"),
+                    discord.SelectOption(label="Degen", description="Degen Drops with Media", emoji="FIRE"),
+                    discord.SelectOption(label="Qzino", description="Qzino AI Promotions", emoji="DICE"),
+                    discord.SelectOption(label="Goated", description="Goated VIP Drops", emoji="GOAT"),
+                    discord.SelectOption(label="MYPRIZE.US", description="MYPRIZE.US Exclusive Offers", emoji="GEM"),
+                    discord.SelectOption(label="CrownCoins", description="CrownCoins Social Casino Sweeps", emoji="CROWN"),
+                    discord.SelectOption(label="RealPrize", description="RealPrize Referral Rewards", emoji="GIFT"),
+                    discord.SelectOption(label="AceBet Casino", description="AceBet Crypto Casino Drops", emoji="SLOT"),
+                    discord.SelectOption(label="LoneStar Casino", description="LoneStar Texas-Style Promos", emoji="STAR"),
+                    discord.SelectOption(label="Chanced Casino", description="Chanced Lucky Drop Events", emoji="CLOVER"),
+                    discord.SelectOption(label="PULSZ", description="PULSZ Platform", emoji="GEM"),
+                    discord.SelectOption(label="THRILL", description="THRILL Platform", emoji="ROLLERCOASTER"),
+                    discord.SelectOption(label="MODO", description="MODO Platform", emoji="GAME"),
+                    discord.SelectOption(label="BABA", description="BABA Casino", emoji="SLOT"),
+                    discord.SelectOption(label="COOKED.US", description="COOKED.US Platform", emoji="COOKING"),
+                    discord.SelectOption(label="COOKED.COM", description="COOKED.COM Platform", emoji="COOKING"),
+                    discord.SelectOption(label="WOWVEGAS", description="WOWVEGAS Platform", emoji="STAR2"),
+                    discord.SelectOption(label="YAYCASINO", description="YAYCASINO Platform", emoji="PARTY"),
+                    discord.SelectOption(label="WINNA", description="WINNA Platform", emoji="TROPHY"),
+                    discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined", emoji="SLOT"),
+                    discord.SelectOption(label="Default", description="Default / Global Fallback", emoji="GLOBE2"),
                 ],
                 row=0
             )
             self.platform_select.callback = self._on_platform_select
             self.add_item(self.platform_select)
 
-            self.post_button = discord.ui.Button(label="📝 Open Post Form", style=discord.ButtonStyle.primary, row=1)
+            self.post_button = discord.ui.Button(label="Open Post Form", style=discord.ButtonStyle.primary, row=1)
             self.post_button.callback = self._on_post_click
             self.add_item(self.post_button)
 
@@ -2691,17 +2685,18 @@ def run_discord_bot():
             self.selected_platforms = self.platform_select.values
             selected_str = ", ".join(self.selected_platforms)
             await interaction.response.send_message(
-                f"🎯 Selected **{len(self.selected_platforms)} Platform(s)**: `{selected_str}`\n"
-                f"👉 Click **📝 Open Post Form** to paste your event text.",
+                f"Selected {len(self.selected_platforms)} Platform(s): {selected_str}\n"
+                f"Click Open Post Form to paste your event text.",
                 ephemeral=True
             )
 
         async def _on_post_click(self, interaction: discord.Interaction):
             if not self.selected_platforms:
-                await interaction.response.send_message("❌ Please select at least one platform first.", ephemeral=True)
+                await interaction.response.send_message("Please select at least one platform first.", ephemeral=True)
                 return
             modal = self.bot.get_cog("ManualPostModal") or ManualPostModal(self.selected_platforms, self.manager, self.bot)
             await interaction.response.send_modal(modal)
+
 
     @bot.tree.command(name="post", description="Manually broadcast a raw event/post to selected platform channels")
     async def slash_post(interaction: discord.Interaction):
@@ -2726,58 +2721,6 @@ def run_discord_bot():
         )
         embed.set_footer(text=f"{BOT_NAME} • Manual Broadcast", icon_url=BOT_AVATAR_URL)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @bot.command(name="post")
-    async def cmd_post(ctx: commands.Context, *, raw_input: str):
-        """
-        Prefix fallback for manual posting.
-        Usage: !post <platform> <message>
-        """
-        if not manager.is_authorized(ctx.author.id) and not _has_admin_access(ctx.author):
-            embed = create_unauthorized_embed()
-            await ctx.send(embed=embed)
-            return
-
-        raw = raw_input.strip()
-        if not raw:
-            await ctx.send("❌ Usage: `!post <platform> <message>`\nExample: `!post Stake.com 🎁 New bonus event!`\nUse `all` to broadcast to every configured platform.")
-            return
-
-        parts = raw.split(maxsplit=1)
-        platform_str = parts[0]
-        message = parts[1] if len(parts) > 1 else ""
-
-        if platform_str.lower() == "all":
-            routes = manager.get_all_routes_summary()
-            targets = [p for p in routes.keys() if p != "Default"]
-            if not targets:
-                await ctx.send("❌ No platforms are configured. Use `/dashboard` to set up channels first.")
-                return
-        else:
-            plat_enum = Platform.from_str(platform_str)
-            if plat_enum == Platform.UNKNOWN:
-                await ctx.send(f"❌ Unknown platform: `{platform_str}`. Use a valid platform name or `all`.")
-                return
-            targets = [plat_enum.value]
-
-        notifier = DiscordNotifier(dashboard_manager=manager, bot_client=bot)
-        sent_any = False
-        for plat_name in targets:
-            try:
-                plat_enum = Platform.from_str(plat_name)
-                success = notifier.send_raw_message(plat_enum, message)
-                if success:
-                    sent_any = True
-                    logger.info(f"Manual raw post dispatched to {plat_name} by {ctx.author}")
-            except Exception as e:
-                logger.error(f"Error posting to {plat_name}: {e}")
-
-        if sent_any:
-            plat_display = ", ".join(targets)
-            await ctx.send(f"✅ Successfully posted raw message to **{plat_display}**.")
-        else:
-            await ctx.send("⚠️ No routes available for the selected platform(s). Configure channels/webhooks via `/dashboard`.")
-
 
     @bot.hybrid_command(name="code", with_app_command=True, description="Validate and broadcast a bonus code to configured routes")
     async def cmd_code(ctx: commands.Context, *, raw_input: str):
@@ -3147,8 +3090,8 @@ def run_discord_bot():
         modal = CodeCheckerModal()
         await interaction.response.send_modal(modal)
 
-    @bot.command(name="codechecker", aliases=["checkcode", "cc"])
-    async def prefix_codechecker(ctx: commands.Context, *, code: str = ""):
+    @bot.command(name="checkcode", aliases=["cc"])
+    async def prefix_checkcode(ctx: commands.Context, *, code: str = ""):
         """
         Prefix fallback for /codechecker. Works in DMs and servers.
         Usage: !codechecker <code> [platform]
