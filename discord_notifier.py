@@ -2,13 +2,68 @@ import json
 import logging
 import asyncio
 import concurrent.futures
+import os
+from datetime import datetime, timezone
 import requests
 from typing import Optional, Dict, Any, List
 from models import BonusCodeItem, Platform
-from config import BOT_NAME, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES
+from config import BOT_NAME, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES, DISCORD_INVITE_URL
 from dashboard_manager import DashboardManager
 
 logger = logging.getLogger(__name__)
+
+# Backup tracking file
+BACKUP_FILE = "posts_backup.json"
+
+
+def save_backup(action: str, platform: str, code: str, details: str = "") -> bool:
+    """
+    Saves a timestamped backup record of posts and code checks to a local JSON file.
+    Uses ISO 8601 timestamps for tracking.
+    Returns True on success, False on failure.
+    """
+    try:
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "platform": platform,
+            "code": code,
+            "details": details,
+        }
+        existing = []
+        if os.path.exists(BACKUP_FILE):
+            try:
+                with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                existing = []
+        existing.append(record)
+        with open(BACKUP_FILE, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+        logger.debug(f"Backup saved: {action} {platform} {code}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save backup: {e}")
+        return False
+
+
+def get_kick_url_for_platform(platform_value: str) -> str:
+    """
+    Conditional Kick link logic:
+    - Rainbet -> https://www.kick.com/moonbootmurphy
+    - All other platforms -> https://www.kick.com/traystrees50
+    """
+    if platform_value == "Rainbet":
+        return "https://www.kick.com/moonbootmurphy"
+    return DEFAULT_KICK_LINK
+
+
+def get_kick_label_for_platform(platform_value: str) -> str:
+    """Returns the Kick stream label for the platform, with Rainbet override."""
+    if platform_value == "Rainbet":
+        return KICK_STREAM_LABELS.get("Rainbet", DEFAULT_KICK_LABEL)
+    return DEFAULT_KICK_LABEL
+
 
 class DiscordNotifier:
     def __init__(self, webhook_url: Optional[str] = None, dashboard_manager: Optional[DashboardManager] = None, bot_client: Optional[Any] = None):
@@ -123,9 +178,10 @@ class DiscordNotifier:
                 "inline": False
             })
 
-        # 5. Line 5: SIGNUP link, JOIN DISCORD link, and FOLLOW ON KICK on the same line
+        # 5. Line 5: SIGNUP link, JOIN DISCORD link, and WATCH ON KICK on the same line
         signup_url = item.affiliate_signup_link
-        kick_url = KICK_STREAM_LINKS.get(item.platform.value, DEFAULT_KICK_LINK)
+        kick_url = get_kick_url_for_platform(item.platform.value)
+        kick_label = get_kick_label_for_platform(item.platform.value)
         fields.extend([
             {
                 "name": "📝 Direct Signup Link",
@@ -134,12 +190,12 @@ class DiscordNotifier:
             },
             {
                 "name": "💬 Official Community",
-                "value": "[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)",
+                "value": f"[JOIN DISCORD]({DISCORD_INVITE_URL})",
                 "inline": True
             },
             {
-                "name": KICK_STREAM_LABELS.get(item.platform.value, DEFAULT_KICK_LABEL),
-                "value": f"[KICK]({kick_url})",
+                "name": kick_label,
+                "value": f"[WATCH ON KICK]({kick_url})",
                 "inline": True
             }
         ])
@@ -271,6 +327,7 @@ class DiscordNotifier:
                     def_webhooks.append(self.default_webhook_url)
                 def_channels = self.dashboard_manager.get_channels("Default")
                 success = self._send_single_item_notification(item, def_webhooks, def_channels)
+                save_backup("post", "Dual Stake", item.code, f"value={item.amount_value} wager={item.wager_requirement}")
                 for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
                     success = self._send_subscriber_notification(us_item, sub_uid) or success
                     success = self._send_subscriber_notification(com_item, sub_uid) or success
@@ -310,6 +367,9 @@ class DiscordNotifier:
 
         success = self._send_single_item_notification(item, target_webhooks, target_channels)
 
+        # Save backup record
+        save_backup("post", item.platform.value, item.code, f"value={item.amount_value} wager={item.wager_requirement}")
+
         # Dispatch to all active subscribers' personal channel/webhook routes (non-owner only)
         for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
             success = self._send_subscriber_notification(item, sub_uid) or success
@@ -320,6 +380,7 @@ class DiscordNotifier:
         """
         Safely dispatches an embed to a Discord text channel using client cache or API fetch.
         Handles both thread-pool execution and event loop coroutine scheduling.
+        Includes persistent interactive buttons (Claim URL + Code Checker) when bot_client is available.
         """
         if not self.bot_client or self.bot_client.is_closed():
             return
@@ -345,8 +406,60 @@ class DiscordNotifier:
                 if channel is not None:
                     role_tag = item.platform.role_tag
                     embed = discord.Embed.from_dict(embed_dict)
+
+                    # Build interactive view with Claim URL + Code Checker buttons
+                    view = None
+                    try:
+                        redeem_url = item.redeem_link
+                        code_str = item.clean_code
+                        platform_name = item.platform.value
+
+                        class _BonusDropView(discord.ui.View):
+                            def __init__(self):
+                                super().__init__(timeout=0)
+
+                            @discord.ui.button(label="🔗 Claim URL", style=discord.ButtonStyle.link, url=redeem_url)
+                            async def _claim_button(self, interaction: discord.Interaction):
+                                pass  # Link button — no handler needed
+
+                            @discord.ui.button(label="🔎 Code Checker", style=discord.ButtonStyle.secondary)
+                            async def _code_checker_button(self, interaction: discord.Interaction):
+                                try:
+                                    from scrapers.validator import StakeCodeValidator
+                                    validator = StakeCodeValidator()
+                                    result = validator.validate(code_str, item.platform)
+                                    status = result.get("status", "UNKNOWN")
+                                    bonus_val = result.get("bonusValue", "N/A")
+                                    wager = result.get("wagerRequirement", "N/A")
+                                    claims = result.get("claimsRemaining", "N/A")
+
+                                    status_emoji = {"ACTIVE": "🟢", "FULLY_CLAIMED": "🔴", "EXPIRED": "⏰", "INVALID": "❌"}.get(status, "🟡")
+                                    checker_embed = discord.Embed(
+                                        title=f"🔎 Code Checker — {platform_name}",
+                                        description=f"**Code:** `{code_str}`\n**Status:** {status_emoji} {status}",
+                                        color=item.platform.embed_color,
+                                    )
+                                    checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
+                                    checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
+                                    checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
+                                    checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE]({redeem_url})", inline=False)
+                                    checker_embed.set_footer(text=f"{BOT_NAME} • Code Checker")
+                                    await interaction.response.send_message(embed=checker_embed, ephemeral=True)
+                                except Exception as e:
+                                    logger.error(f"Code checker error: {e}")
+                                    try:
+                                        await interaction.response.send_message(
+                                            f"❌ Code check failed: {str(e)[:200]}", ephemeral=True
+                                        )
+                                    except Exception:
+                                        pass
+
+                        view = _BonusDropView()
+                    except Exception as ve:
+                        logger.warning(f"Failed to build interactive view: {ve}")
+
                     await asyncio.wait_for(
-                        channel.send(content=role_tag or None, embed=embed),
+                        channel.send(content=role_tag or None, embed=embed, view=view),
                         timeout=5.0
                     )
                     logger.info(f"✅ Dispatched {item.platform.value} drop '{item.code}' to direct channel #{getattr(channel, 'name', channel_id)} ({channel_id})")

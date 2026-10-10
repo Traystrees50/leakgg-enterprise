@@ -1,0 +1,28 @@
+# Environment / secrets
+.env
+.env.local
+
+# State files
+seen_codes.json
+*.json.lock
+
+# Logs
+*.log
+bot.log
+bot_error.log
+bot_runtime.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime
+.DS_Store
+Thumbs.db

@@ -10,7 +10,7 @@ from config import DISCORD_BOT_TOKEN, BOT_NAME, BOT_AVATAR_URL, CHECK_INTERVAL_S
 from models import BonusCodeItem, Platform
 from tracker import CodeTracker
 from dashboard_manager import DashboardManager
-from discord_notifier import DiscordNotifier
+from discord_notifier import DiscordNotifier, save_backup
 from scrapers.engine import ScraperEngine
 from scrapers.stakestats import StakeStatsPoller
 from scrapers.validator import StakeCodeValidator
@@ -2884,6 +2884,116 @@ def run_discord_bot():
             )
         embed.set_footer(text=f"{BOT_NAME} - Subscriber Management", icon_url=BOT_AVATAR_URL)
         await ctx.send(embed=embed)
+
+    # ----------------------------------------------------
+    # Code Checker Slash Command & Modal
+    # ----------------------------------------------------
+    class CodeCheckerModal(discord.ui.Modal):
+        def __init__(self):
+            super().__init__(title="🔎 Code Checker — Validate Bonus Code")
+            self.code_input = discord.ui.TextInput(
+                label="Paste Bonus Code",
+                placeholder="e.g. UIJXBQUS, STAKE7XK9, DEGENWIN",
+                required=True,
+                max_length=35,
+                style=discord.TextStyle.short
+            )
+            self.platform_input = discord.ui.TextInput(
+                label="Platform (optional)",
+                placeholder="e.g. Stake.us, Stake.com, Degen, Rainbet",
+                required=False,
+                max_length=30,
+                style=discord.TextStyle.short
+            )
+            self.add_item(self.code_input)
+            self.add_item(self.platform_input)
+
+        async def on_submit(self, interaction: discord.Interaction):
+            code = self.code_input.value.strip()
+            platform_str = self.platform_input.value.strip() if self.platform_input.value else ""
+
+            if not code:
+                await interaction.response.send_message("❌ No code provided.", ephemeral=True)
+                return
+
+            # Determine platform
+            platform = Platform.UNKNOWN
+            if platform_str:
+                platform = Platform.from_str(platform_str)
+            if platform == Platform.UNKNOWN:
+                c_upper = code.upper()
+                if c_upper.startswith("STAKEUS"):
+                    platform = Platform.STAKE_US
+                elif c_upper.startswith("STAKECOM"):
+                    platform = Platform.STAKE_COM
+
+            # Validate code
+            status = "UNKNOWN"
+            bonus_val = "N/A"
+            wager = "N/A"
+            claims = "N/A"
+            redeem_url = ""
+
+            try:
+                if platform in (Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE):
+                    validator = StakeCodeValidator()
+                    result = validator.validate(code, platform)
+                    status = result.get("status", "UNKNOWN")
+                    bonus_val = result.get("bonusValue", "N/A") or "N/A"
+                    wager = result.get("wagerRequirement", "N/A") or "N/A"
+                    claims = result.get("claimsRemaining", "N/A") or "N/A"
+                else:
+                    status = "ACTIVE"
+            except Exception as e:
+                logger.error(f"Code checker validation error: {e}")
+                status = "ERROR"
+
+            # Build claim URL
+            if platform == Platform.STAKE_US:
+                redeem_url = f"https://stake.us/?c={code}"
+            elif platform == Platform.STAKE_COM:
+                redeem_url = f"https://stake.com/?c={code}"
+            elif platform == Platform.DEGEN:
+                redeem_url = f"https://degen.com/r/selfmade"
+            elif platform == Platform.RAINBET:
+                redeem_url = f"https://rainbet.com/?r=murphy"
+            elif platform == Platform.QZINO:
+                redeem_url = f"https://qzino.ai/?r=SELFMADE"
+            else:
+                redeem_url = "https://stake.com/?c=SELFMADE"
+
+            status_emoji = {
+                "ACTIVE": "🟢",
+                "FULLY_CLAIMED": "🔴",
+                "EXPIRED": "⏰",
+                "INVALID": "❌",
+                "ERROR": "⚠️",
+            }.get(status, "🟡")
+
+            checker_embed = discord.Embed(
+                title=f"🔎 Code Checker — {platform.value if platform != Platform.UNKNOWN else 'Unknown'}",
+                description=f"**Code:** `{code}`\n**Status:** {status_emoji} {status}",
+                color=platform.embed_color if platform != Platform.UNKNOWN else 0x1475E1,
+            )
+            checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
+            checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
+            checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
+            checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE TO CLAIM]({rede_url})", inline=False)
+            checker_embed.add_field(name="💬 Community", value=f"[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", inline=True)
+            kick_url = "https://www.kick.com/moonbootmurphy" if platform == Platform.RAINBET else "https://www.kick.com/traystrees50"
+            checker_embed.add_field(name="🎥 Watch on Kick", value=f"[KICK]({kick_url})", inline=True)
+            checker_embed.set_footer(text=f"{BOT_NAME} • Code Checker")
+
+            # Save backup
+            save_backup("code_check", platform.value if platform != Platform.UNKNOWN else "unknown", code, f"status={status}")
+
+            await interaction.response.send_message(embed=checker_embed, ephemeral=True)
+
+    @bot.tree.command(name="codechecker", description="Check a bonus code status (Active/Expired) with instant claim link")
+    async def slash_codechecker(interaction: discord.Interaction):
+        """Opens the Code Checker modal for instant ephemeral code validation."""
+        modal = CodeCheckerModal()
+        await interaction.response.send_modal(modal)
 
     try:
         bot.run(DISCORD_BOT_TOKEN, log_handler=None)
