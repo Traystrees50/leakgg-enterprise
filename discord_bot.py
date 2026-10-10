@@ -2991,9 +2991,106 @@ def run_discord_bot():
 
     @bot.tree.command(name="codechecker", description="Check a bonus code status (Active/Expired) with instant claim link")
     async def slash_codechecker(interaction: discord.Interaction):
-        """Opens the Code Checker modal for instant ephemeral code validation."""
+        """Opens the Code Checker modal for instant ephemeral code validation.
+        Works in DMs, servers, and all channels."""
         modal = CodeCheckerModal()
         await interaction.response.send_modal(modal)
+
+    @bot.command(name="codechecker", aliases=["checkcode", "cc"])
+    async def prefix_codechecker(ctx: commands.Context, *, code: str = ""):
+        """
+        Prefix fallback for /codechecker. Works in DMs and servers.
+        Usage: !codechecker <code> [platform]
+        Example: !codechecker UIJXBQUS Stake.us
+        """
+        if not code:
+            embed = discord.Embed(
+                title="🔎 Code Checker",
+                description="Paste a bonus code to check its status.\n\n"
+                            "**Usage:** `!codechecker <code> [platform]`\n"
+                            "**Example:** `!codechecker UIJXBQUS Stake.us`\n\n"
+                            "Or use the slash command: `/codechecker`",
+                color=0x1475E1
+            )
+            await ctx.send(embed=embed)
+            return
+
+        parts = code.strip().split(maxsplit=1)
+        code_str = parts[0].strip()
+        platform_str = parts[1].strip() if len(parts) > 1 else ""
+
+        # Determine platform
+        platform = Platform.UNKNOWN
+        if platform_str:
+            platform = Platform.from_str(platform_str)
+        if platform == Platform.UNKNOWN:
+            c_upper = code_str.upper()
+            if c_upper.startswith("STAKEUS"):
+                platform = Platform.STAKE_US
+            elif c_upper.startswith("STAKECOM"):
+                platform = Platform.STAKE_COM
+
+        # Validate code
+        status = "UNKNOWN"
+        bonus_val = "N/A"
+        wager = "N/A"
+        claims = "N/A"
+        redeem_url = ""
+
+        try:
+            if platform in (Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE):
+                validator = StakeCodeValidator()
+                result = validator.validate(code_str, platform)
+                status = result.get("status", "UNKNOWN")
+                bonus_val = result.get("bonusValue", "N/A") or "N/A"
+                wager = result.get("wagerRequirement", "N/A") or "N/A"
+                claims = result.get("claimsRemaining", "N/A") or "N/A"
+            else:
+                status = "ACTIVE"
+        except Exception as e:
+            logger.error(f"Code checker validation error: {e}")
+            status = "ERROR"
+
+        # Build claim URL
+        if platform == Platform.STAKE_US:
+            redeem_url = f"https://stake.us/?c={code_str}"
+        elif platform == Platform.STAKE_COM:
+            redeem_url = f"https://stake.com/?c={code_str}"
+        elif platform == Platform.DEGEN:
+            redeem_url = "https://degen.com/r/selfmade"
+        elif platform == Platform.RAINBET:
+            redeem_url = "https://rainbet.com/?r=murphy"
+        elif platform == Platform.QZINO:
+            redeem_url = "https://qzino.ai/?r=SELFMADE"
+        else:
+            redeem_url = "https://stake.com/?c=SELFMADE"
+
+        status_emoji = {
+            "ACTIVE": "🟢",
+            "FULLY_CLAIMED": "🔴",
+            "EXPIRED": "⏰",
+            "INVALID": "❌",
+            "ERROR": "⚠️",
+        }.get(status, "🟡")
+
+        checker_embed = discord.Embed(
+            title=f"🔎 Code Checker - {platform.value if platform != Platform.UNKNOWN else 'Unknown'}",
+            description=f"**Code:** `{code_str}`\n**Status:** {status_emoji} {status}",
+            color=platform.embed_color if platform != Platform.UNKNOWN else 0x1475E1,
+        )
+        checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
+        checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
+        checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
+        checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE TO CLAIM]({rede_url})", inline=False)
+        checker_embed.add_field(name="💬 Community", value=f"[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", inline=True)
+        kick_url = "https://www.kick.com/moonbootmurphy" if platform == Platform.RAINBET else "https://www.kick.com/traystrees50"
+        checker_embed.add_field(name="🎥 Watch on Kick", value=f"[KICK]({kick_url})", inline=True)
+        checker_embed.set_footer(text=f"{BOT_NAME} - Code Checker")
+
+        # Save backup
+        save_backup("code_check", platform.value if platform != Platform.UNKNOWN else "unknown", code_str, f"status={status}")
+
+        await ctx.send(embed=checker_embed)
 
     try:
         bot.run(DISCORD_BOT_TOKEN, log_handler=None)
