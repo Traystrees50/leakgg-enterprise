@@ -1,3 +1,6 @@
+# Backup directories
+backup-*/
+
 # Environment / secrets
 .env
 .env.local
@@ -5,6 +8,7 @@
 # State files
 seen_codes.json
 *.json.lock
+posts_backup.json
 
 # Logs
 *.log
