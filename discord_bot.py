@@ -2540,6 +2540,7 @@ def run_discord_bot():
     # ----------------------------------------------------
     # Information & Guide Commands (Consolidated)
     # ----------------------------------------------------
+    def create_links_embed() -> discord.Embed:
         """
         Generates a comprehensive affiliate/signup links embed for all platforms.
         """
