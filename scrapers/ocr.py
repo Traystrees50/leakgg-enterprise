@@ -1,8 +1,9 @@
-import base64
+﻿import base64
+import os
 import re
 import logging
 from typing import Optional, Dict, Any
-from config import OCR_SPACE_API_KEY, OCR_SPACE_API_URL
+from config import OCR_SPACE_API_URL
 from network_manager import ResilientSession
 
 logger = logging.getLogger(__name__)
@@ -30,14 +31,14 @@ _OCR_STOP_WORDS = {
 
 
 class OCRClient:
-    """
-    Lightweight client for the OCR.space API.
-    Extracts text from a remote image URL and pulls out bonus-code candidates.
-    No new dependencies — uses ``requests`` via ResilientSession.
-    """
-
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or OCR_SPACE_API_KEY
+        if api_key is not None:
+            if api_key == "":
+                self.api_key = None
+            else:
+                self.api_key = api_key
+        else:
+            self.api_key = None
         self.session = ResilientSession(timeout=15, max_retries=2)
 
     @property
@@ -45,18 +46,12 @@ class OCRClient:
         return bool(self.api_key)
 
     def ocr_image(self, image_url: str) -> Optional[str]:
-        """
-        Sends an image URL to OCR.space and returns the parsed text.
-        Returns None on any failure (network, API error, bad response).
-        """
         if not self.api_key:
             logger.debug("OCR.space API key not configured; skipping OCR")
             return None
-
         if not image_url or not image_url.startswith("http"):
             logger.debug(f"OCR skipped: invalid image URL '{image_url}'")
             return None
-
         try:
             resp = self.session.post(
                 OCR_SPACE_API_URL,
@@ -91,14 +86,8 @@ class OCRClient:
             return None
 
     def extract_code(self, ocr_text: str) -> Optional[str]:
-        """
-        Extracts the most likely bonus code from OCR-extracted text.
-        Tries labelled patterns first, then standalone tokens, filtered
-        against a stop-word list to reject common false positives.
-        """
         if not ocr_text:
             return None
-
         for pattern in (_RE_OCR_CODE_GENERIC, _RE_OCR_CODE_STANDALONE):
             m = pattern.search(ocr_text)
             if m:
@@ -106,32 +95,21 @@ class OCRClient:
                 if candidate.upper() not in _OCR_STOP_WORDS:
                     if re.search(r"[A-Z]", candidate):
                         return candidate
-
         tokens = _RE_OCR_CODE_HIGHLIGHTED.findall(ocr_text)
         for tok in tokens:
             if tok.upper() in _OCR_STOP_WORDS:
                 continue
             if re.search(r"[A-Z]", tok):
                 return tok
-
         return None
 
     def ocr_code(self, image_url: str) -> Optional[str]:
-        """
-        Convenience: OCR an image URL and extract a bonus code from the result.
-        Returns the code string or None.
-        """
         text = self.ocr_image(image_url)
         if not text:
             return None
         return self.extract_code(text)
 
     def ocr_image_bytes(self, image_bytes: bytes) -> Optional[str]:
-        """
-        Sends raw image bytes (base64-encoded) to OCR.space and returns parsed text.
-        Useful for images that are behind auth layers (e.g. private Telegram photos).
-        Returns None on any failure.
-        """
         if not self.api_key or not image_bytes:
             return None
         try:
@@ -167,10 +145,6 @@ class OCRClient:
             return None
 
     def ocr_code_from_bytes(self, image_bytes: bytes) -> Optional[str]:
-        """
-        Convenience: OCR raw image bytes and extract a bonus code.
-        Returns the code string or None.
-        """
         text = self.ocr_image_bytes(image_bytes)
         if not text:
             return None
