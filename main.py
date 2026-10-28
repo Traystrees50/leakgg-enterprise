@@ -414,6 +414,117 @@ def cmd_clear_history():
     tracker.clear()
     print(f"Cleared tracked codes history in {STATE_FILE_PATH}.")
 
+def cmd_watch(interval: int = 60, once: bool = False, notify: bool = True):
+    """Continuous multi-source watcher loop, like brokechubb's `watch` command."""
+    logger.info(f"=== Starting {BOT_NAME} Watcher ===")
+    manager = DashboardManager()
+    tracker = CodeTracker(STATE_FILE_PATH)
+    notifier = DiscordNotifier(dashboard_manager=manager)
+    engine = ScraperEngine(tracker=tracker, notifier=notifier, code_validator=StakeCodeValidator())
+
+    sweep = 0
+    while running:
+        sweep += 1
+        logger.info(f"[Watch] Sweep #{sweep} starting...")
+        try:
+            new_codes = engine.run_check(notify=notify)
+            if new_codes:
+                logger.info(f"[Watch] Sweep #{sweep}: {len(new_codes)} new codes detected and broadcast.")
+            else:
+                logger.info(f"[Watch] Sweep #{sweep}: no new codes.")
+        except Exception as e:
+            logger.error(f"[Watch] Sweep #{sweep} error: {e}", exc_info=True)
+
+        if once:
+            break
+
+        logger.info(f"[Watch] Next sweep in {interval} seconds...")
+        slept = 0
+        while running and slept < interval:
+            time.sleep(1)
+            slept += 1
+
+    logger.info("Watcher stopped.")
+
+def cmd_history(limit: int = 25):
+    """Print recent drop history from the Supabase database."""
+    import db_manager
+    rows = db_manager.get_recent_history(limit=limit)
+    if not rows:
+        print("\nNo drops recorded in the database yet. Run `python main.py watch --once` to populate history.\n")
+        return
+
+    print("\n" + "=" * 80)
+    print(f" 📜 RECENT DROP HISTORY ({len(rows)} most recent)")
+    print("=" * 80)
+    for r in rows:
+        status = r.get("availability_status") or "—"
+        print(f" • [{r.get('platform', '?')}] Code: {r.get('code', '?')}  | Value: {r.get('amount_value', '—')}")
+        print(f"   Source: {r.get('source_name', '—')}  | Status: {status}  | Sightings: {r.get('sightings', 1)}")
+        print(f"   Last Seen: {r.get('last_seen_at', '—')}")
+        print("-" * 80)
+
+def cmd_stats():
+    """Print analytics: platform breakdown, source leaderboard, hourly heatmap."""
+    import db_manager
+    stats = db_manager.get_stats()
+    if stats["total_drops"] == 0:
+        print("\nNo drops recorded yet. Run `python main.py watch --once` to start collecting data.\n")
+        return
+
+    print("\n" + "=" * 80)
+    print(f" 📊 LEAKED.GG DROP ANALYTICS — {stats['total_drops']} total drops recorded")
+    print("=" * 80)
+
+    print("\n--- 🎰 Drops by Platform ---")
+    for platform, count in stats["platform_breakdown"]:
+        bar = "█" * min(count, 40)
+        print(f" • {platform:25s} {count:4d}  {bar}")
+
+    print("\n--- 📡 Source Leaderboard (Top 10) ---")
+    for source, count in stats["source_leaderboard"]:
+        print(f" • {source:25s} {count:4d}")
+
+    print("\n--- ⏰ Hourly Drop Heatmap ---")
+    heatmap = stats["hourly_heatmap"]
+    if heatmap:
+        max_count = max(heatmap.values()) if heatmap else 1
+        for hour in sorted(heatmap.keys()):
+            count = heatmap[hour]
+            bar = "▓" * int((count / max_count) * 30) if max_count > 0 else ""
+            print(f" • {hour}  {count:3d}  {bar}")
+    else:
+        print(" (no timestamp data available)")
+    print("=" * 80 + "\n")
+
+def cmd_check_codes(codes: List[str]):
+    """Validate one or more bonus codes against Stake's GraphQL API (like brokechubb's `check`)."""
+    validator = StakeCodeValidator()
+    print("\n" + "=" * 80)
+    print(f" 🔎 CODE VALIDATION CHECK")
+    print("=" * 80)
+    any_active = False
+    for raw_code in codes:
+        code = raw_code.strip()
+        if not code:
+            continue
+        print(f"\nChecking: {code}")
+        for platform in (Platform.STAKE_US, Platform.STAKE_COM):
+            result = validator.validate(code, platform)
+            status = result.get("status", "UNKNOWN")
+            bonus_val = result.get("bonusValue", "N/A")
+            reason = result.get("reason", "")
+            emoji = {"AVAILABLE": "🟢", "FULLY_CLAIMED": "🔴", "EXPIRED": "⏰"}.get(status, "🟡")
+            print(f"  {platform.value:15s} {emoji} {status}  | Bonus: {bonus_val}" + (f" | {reason}" if reason and status == "UNKNOWN" else ""))
+            if status == "AVAILABLE":
+                any_active = True
+    print("\n" + "=" * 80)
+    if any_active:
+        print(" ✅ At least one platform reports the code ACTIVE.")
+    else:
+        print(" ❌ No platform reports the code as active.")
+    print("=" * 80 + "\n")
+
 def cmd_test_channel():
     import asyncio
     from send_test_embeds import send_all_test_embeds
@@ -426,7 +537,7 @@ def main():
         "action",
         nargs="?",
         default="run",
-        choices=["run", "check-once", "poll-stakestats", "poll-telegram", "test-discord", "test-channel", "test-degen-qzino", "scan-all-latest", "fetch-proxies", "bot", "list-seen", "list-sources", "add-source", "remove-source", "clear-history", "health"],
+        choices=["run", "check-once", "poll-stakestats", "poll-telegram", "test-discord", "test-channel", "test-degen-qzino", "scan-all-latest", "fetch-proxies", "bot", "list-seen", "list-sources", "add-source", "remove-source", "clear-history", "health", "watch", "history", "stats", "check"],
         help="Action to perform (default: run)"
     )
     parser.add_argument(
@@ -452,6 +563,28 @@ def main():
         dest="platform_val",
         default="custom",
         help="Target platform name for Telegram source"
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        help="Polling interval in seconds for 'watch' mode (default: 60)"
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run a single sweep then exit (watch mode)"
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=25,
+        help="Number of rows for 'history' (default: 25)"
+    )
+    parser.add_argument(
+        "codes",
+        nargs="*",
+        help="Bonus code(s) to validate with 'check' action"
     )
     args = parser.parse_args()
 
@@ -493,6 +626,17 @@ def main():
         cmd_clear_history()
     elif args.action == "health":
         cmd_health()
+    elif args.action == "watch":
+        cmd_watch(interval=args.interval, once=args.once, notify=True)
+    elif args.action == "history":
+        cmd_history(limit=args.limit)
+    elif args.action == "stats":
+        cmd_stats()
+    elif args.action == "check":
+        if not args.codes:
+            print("Please specify code(s) to check, e.g.: python main.py check CODE1 CODE2")
+        else:
+            cmd_check_codes(args.codes)
 
 if __name__ == "__main__":
     main()
