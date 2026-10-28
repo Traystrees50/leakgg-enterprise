@@ -17,6 +17,15 @@ from scrapers.validator import StakeCodeValidator
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_record_drop(item: BonusCodeItem) -> None:
+    """Record a newly detected drop to Supabase drop_history. Non-fatal on failure."""
+    try:
+        import db_manager
+        db_manager.record_drop(item.to_dict())
+    except Exception as e:
+        logger.debug(f"Supabase drop history record skipped: {e}")
+
 class ScraperEngine:
     def __init__(
         self,
@@ -131,10 +140,18 @@ class ScraperEngine:
                             if vstatus in ("FULLY_CLAIMED", "EXPIRED"):
                                 logger.info(f"Skipping {vstatus} code '{c_clean}' for {item.platform.value} (validator)")
                                 continue
+                            try:
+                                import db_manager
+                                db_manager.update_availability_status(c_clean, item.platform.value, vstatus)
+                            except Exception:
+                                pass
                         except Exception as ve:
                             logger.debug(f"Validator check failed for {c_clean} on {item.platform.value}: {ve}")
 
                     new_items.append(item)
+
+                    # Record to Supabase drop_history (non-fatal)
+                    _safe_record_drop(item)
 
                     # Dispatch Discord notification in real-time
                     if notify:

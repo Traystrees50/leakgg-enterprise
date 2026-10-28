@@ -27,8 +27,8 @@ DISCORD_WEBHOOK_THRILL = os.getenv("DISCORD_WEBHOOK_THRILL", "")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
 # Owner & Project Creator Discord User ID (Full administrative access)
-OWNER_USER_ID = 1051355279511519273
-DISCORD_INVITE_URL = "https://discord.gg/TvJe6BV7ge"
+OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "0"))
+DISCORD_INVITE_URL = os.getenv("DISCORD_INVITE_URL", "https://discord.gg/TvJe6BV7ge")
 
 # Platform Embed Colors (Hex integer) - Strict Platform Color Palette:
 # shuffle.us: white, shuffle.com: purple, qzino: yellow, stake.us: orange, stake.com: pink, rainbet: dark blue
