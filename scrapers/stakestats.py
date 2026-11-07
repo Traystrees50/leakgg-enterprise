@@ -1,5 +1,6 @@
 import logging
 import datetime
+from decimal import Decimal, InvalidOperation
 from typing import List, Dict, Any, Optional, Tuple
 from models import BonusCodeItem, Platform
 from config import STAKESTATS_API_URL, STAKESTATS_CODE_URL, HTTP_HEADERS, REQUEST_TIMEOUT, ENABLE_JITTER, ENABLE_PROXY_ROTATION
@@ -7,6 +8,30 @@ from filters import is_event_recent, MAX_EVENT_AGE_DAYS
 from network_manager import ResilientSession
 
 logger = logging.getLogger(__name__)
+
+
+def _format_wager_requirement(value: Any) -> str:
+    if value is None:
+        return "Not specified"
+
+    raw_value = str(value).strip()
+    if not raw_value or raw_value.lower() in {"n/a", "none", "null", "unknown"}:
+        return "Not specified"
+
+    numeric_value = raw_value.replace(",", "").replace("$", "").strip()
+    try:
+        amount = Decimal(numeric_value)
+    except InvalidOperation:
+        return f"{raw_value} (7-Day Wager)"
+
+    if not amount.is_finite():
+        return f"{raw_value} (7-Day Wager)"
+
+    formatted_amount = format(amount, ",f")
+    if "." in formatted_amount:
+        formatted_amount = formatted_amount.rstrip("0").rstrip(".")
+    return f"${formatted_amount} (7-Day Wager)"
+
 
 class StakeStatsPoller:
     """
@@ -51,17 +76,23 @@ class StakeStatsPoller:
         active_com: List[BonusCodeItem] = []
 
         for item in raw_codes:
+            if not isinstance(item, dict):
+                logger.warning("Skipping malformed StakeStats record: expected an object.")
+                continue
+
             code = str(item.get("code") or item.get("id") or "").strip()
             if not code:
                 continue
 
-            status = item.get("status", {})
-            is_us_avail = status.get("US", "").lower() == "available"
-            is_com_avail = status.get("COM", "").lower() == "available"
+            status = item.get("status")
+            if not isinstance(status, dict):
+                status = {}
+            is_us_avail = str(status.get("US") or "").lower() == "available"
+            is_com_avail = str(status.get("COM") or "").lower() == "available"
 
             tag = str(item.get("tag") or "").upper()
-            val_num = str(item.get("value") or "0")
-            wager_num = str(item.get("wager") or "0")
+            raw_value = item.get("value")
+            val_num = str(raw_value).strip() if raw_value is not None and str(raw_value).strip() else ""
             dropped_ts = item.get("droppedAt")
 
             # Human-formatted drop time & age check
@@ -85,21 +116,22 @@ class StakeStatsPoller:
                     continue
 
             # Format value & wager strings
-            val_formatted = f"${val_num}" if not val_num.startswith("$") else val_num
-            try:
-                wager_val = int(wager_num.replace(",", "").replace("$", ""))
-                wager_formatted = f"${wager_val:,.0f} (7-Day Wager)"
-            except Exception:
-                wager_formatted = f"${wager_num} (7-Day Wager)"
+            val_formatted = (
+                val_num if not val_num or val_num.startswith(("$", "€", "£")) else f"${val_num}"
+            ) or "Not specified"
+            wager_formatted = _format_wager_requirement(item.get("wager"))
 
-            is_hr = (tag == "HR") or (val_num in ["12.50", "25", "50", "100"]) or ("50000" in wager_num or "100000" in wager_num)
+            is_hr = (tag == "HR") or (val_num in ["12.50", "25", "50", "100"]) or (
+                any(amount in str(item.get("wager") or "") for amount in ["50000", "100000"])
+            )
 
             # Stake.us item
             if is_us_avail:
+                amount_value = f"{val_formatted} SC" if val_formatted != "Not specified" else val_formatted
                 item_us = BonusCodeItem(
                     code=code,
                     platform=Platform.STAKE_US,
-                    amount_value=f"{val_formatted} SC",
+                    amount_value=amount_value,
                     wager_requirement=wager_formatted,
                     source_url=self.page_url,
                     source_name="StakeStats.net (Live)",
@@ -113,10 +145,11 @@ class StakeStatsPoller:
 
             # Stake.com item
             if is_com_avail:
+                amount_value = f"{val_formatted} USD" if val_formatted != "Not specified" else val_formatted
                 item_com = BonusCodeItem(
                     code=code,
                     platform=Platform.STAKE_COM,
-                    amount_value=f"{val_formatted} USD",
+                    amount_value=amount_value,
                     wager_requirement=wager_formatted,
                     source_url=self.page_url,
                     source_name="StakeStats.net (Live)",
@@ -142,18 +175,22 @@ class StakeStatsPoller:
 
             code_upper = code.strip().upper()
             for item in raw_codes:
+                if not isinstance(item, dict):
+                    continue
                 item_code = str(item.get("code") or item.get("id") or "").strip().upper()
                 if item_code != code_upper:
                     continue
 
-                status = item.get("status", {})
+                status = item.get("status")
+                if not isinstance(status, dict):
+                    continue
                 if platform == Platform.STAKE_US:
-                    return status.get("US", "").lower() == "available"
+                    return str(status.get("US") or "").lower() == "available"
                 elif platform == Platform.STAKE_COM:
-                    return status.get("COM", "").lower() == "available"
+                    return str(status.get("COM") or "").lower() == "available"
                 elif platform == Platform.DUAL_STAKE:
-                    us_avail = status.get("US", "").lower() == "available"
-                    com_avail = status.get("COM", "").lower() == "available"
+                    us_avail = str(status.get("US") or "").lower() == "available"
+                    com_avail = str(status.get("COM") or "").lower() == "available"
                     return us_avail or com_avail
             return False
         except Exception as e:

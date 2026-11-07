@@ -10,6 +10,7 @@ from config import (
     DISCORD_WEBHOOK_QZINO, DISCORD_WEBHOOK_RAINBET,
     DISCORD_WEBHOOK_DEGEN, DISCORD_WEBHOOK_GOATED, DISCORD_WEBHOOK_WINNA,
     DISCORD_WEBHOOK_THRILL,
+    DISCORD_WEBHOOK_GAMBA,
     CHECK_INTERVAL_SECONDS, OWNER_USER_ID,
     TELEGRAM_CHANNELS, TARGET_SOURCES, TELEGRAM_PRIVATE_SOURCES
 )
@@ -30,6 +31,9 @@ class DashboardManager:
         self.config: Dict[str, Any] = {
             "channels": {},
             "webhooks": {},
+            "disabled_env_webhooks": {},
+            "disabled_default_webhooks": {},
+            "route_labels": {"channels": {}, "webhooks": {}},
             "sources": {
                 "telegram": {},
                 "web": [],
@@ -100,6 +104,15 @@ class DashboardManager:
                     if isinstance(data, dict):
                         self.config["channels"] = data.get("channels", {})
                         self.config["webhooks"] = data.get("webhooks", {})
+                        self.config["disabled_env_webhooks"] = data.get("disabled_env_webhooks", {})
+                        self.config["disabled_default_webhooks"] = data.get("disabled_default_webhooks", {})
+                        route_labels = data.get("route_labels", {})
+                        if not isinstance(route_labels, dict):
+                            route_labels = {}
+                        self.config["route_labels"] = {
+                            "channels": route_labels.get("channels", {}),
+                            "webhooks": route_labels.get("webhooks", {}),
+                        }
                         self.config["sources"] = data.get("sources", {
                             "telegram": {},
                             "web": [],
@@ -126,9 +139,6 @@ class DashboardManager:
                     logger.info(f"Loaded dashboard configuration from {self.filepath}")
             except Exception as e:
                 logger.error(f"Error loading dashboard config from {self.filepath}: {e}")
-        else:
-            self.save()
-
     def is_owner(self, user_id: Union[int, str]) -> bool:
         """
         Returns True if the given user ID matches the project owner / creator.
@@ -240,7 +250,7 @@ class DashboardManager:
         channels = self.get_channels(platform_input)
         return channels[0] if channels else None
 
-    def add_channel(self, platform_input: Any, channel_id: int) -> str:
+    def add_channel(self, platform_input: Any, channel_id: int, label: Optional[str] = None) -> str:
         """
         Adds a channel ID to the platform's multi-channel routing list.
         """
@@ -250,8 +260,47 @@ class DashboardManager:
         if cid not in existing:
             existing.append(cid)
             self.config["channels"][key] = existing
-            self.save()
+        if label and label.strip():
+            self._set_route_label("channels", key, str(cid), label)
+        self.save()
         return key
+
+    def remove_subscriber_webhook(
+        self, user_id: Union[int, str], platform_input: Any, webhook_url: str
+    ) -> str:
+        uid = str(user_id).strip()
+        sub_routes = self._get_subscriber_routes(uid)
+        key = self._normalize_platform_key(platform_input)
+        existing = self._ensure_webhook_list(sub_routes.get("webhooks", {}).get(key))
+        url = str(webhook_url).strip()
+        if url in existing:
+            existing.remove(url)
+            if existing:
+                sub_routes["webhooks"][key] = existing
+            else:
+                sub_routes["webhooks"].pop(key, None)
+        sub_routes.get("webhook_labels", {}).get(key, {}).pop(url, None)
+        self.save()
+        return key
+
+    def _set_route_label(self, route_type: str, platform_key: str, target: str, label: Optional[str]) -> None:
+        labels = self.config.setdefault("route_labels", {}).setdefault(route_type, {})
+        platform_labels = labels.setdefault(platform_key, {})
+        clean_label = (label or "").strip()
+        if clean_label:
+            platform_labels[target] = clean_label[:80]
+        else:
+            platform_labels.pop(target, None)
+            if not platform_labels:
+                labels.pop(platform_key, None)
+
+    def get_route_label(self, route_type: str, platform_input: Any, target: Any) -> Optional[str]:
+        key = self._normalize_platform_key(platform_input)
+        labels = self.config.get("route_labels", {}).get(route_type, {}).get(key, {})
+        label = labels.get(str(target))
+        if label is None and key != "Default":
+            label = self.config.get("route_labels", {}).get(route_type, {}).get("Default", {}).get(str(target))
+        return label
 
     def remove_channel(self, platform_input: Any, channel_id: int) -> str:
         """
@@ -266,7 +315,8 @@ class DashboardManager:
                 self.config["channels"][key] = existing
             else:
                 self.config["channels"].pop(key, None)
-            self.save()
+        self.config.get("route_labels", {}).get("channels", {}).get(key, {}).pop(str(cid), None)
+        self.save()
         return key
 
     def clear_channels(self, platform_input: Any) -> str:
@@ -275,6 +325,7 @@ class DashboardManager:
         """
         key = self._normalize_platform_key(platform_input)
         self.config["channels"].pop(key, None)
+        self.config.get("route_labels", {}).get("channels", {}).pop(key, None)
         self.save()
         return key
 
@@ -285,8 +336,13 @@ class DashboardManager:
         key = self._normalize_platform_key(platform_input)
         if channel_id is None:
             self.config["channels"].pop(key, None)
+            self.config.get("route_labels", {}).get("channels", {}).pop(key, None)
         else:
             self.config["channels"][key] = [int(channel_id)]
+            labels = self.config.get("route_labels", {}).get("channels", {}).get(key, {})
+            for existing_id in list(labels):
+                if existing_id != str(channel_id):
+                    labels.pop(existing_id, None)
         self.save()
         return key
 
@@ -298,8 +354,13 @@ class DashboardManager:
         cleaned = self._ensure_channel_list(channel_ids)
         if cleaned:
             self.config["channels"][key] = cleaned
+            labels = self.config.get("route_labels", {}).get("channels", {}).get(key, {})
+            for existing_id in list(labels):
+                if existing_id not in {str(channel_id) for channel_id in cleaned}:
+                    labels.pop(existing_id, None)
         else:
             self.config["channels"].pop(key, None)
+            self.config.get("route_labels", {}).get("channels", {}).pop(key, None)
         self.save()
         return key
 
@@ -309,7 +370,9 @@ class DashboardManager:
     def _get_subscriber_routes(self, user_id: Union[int, str]) -> Dict[str, Any]:
         uid = str(user_id).strip()
         if uid not in self.config["subscriber_routes"]:
-            self.config["subscriber_routes"][uid] = {"channels": {}, "webhooks": {}, "guild_id": None}
+            self.config["subscriber_routes"][uid] = {
+                "channels": {}, "webhooks": {}, "channel_labels": {}, "webhook_labels": {}, "guild_id": None
+            }
         return self.config["subscriber_routes"][uid]
 
     def get_subscriber_channels(self, user_id: Union[int, str], platform_input: Any) -> List[int]:
@@ -326,7 +389,9 @@ class DashboardManager:
         key = self._normalize_platform_key(platform_input)
         return self._ensure_webhook_list(sub_routes.get("webhooks", {}).get(key))
 
-    def add_subscriber_channel(self, user_id: Union[int, str], platform_input: Any, channel_id: int) -> str:
+    def add_subscriber_channel(
+        self, user_id: Union[int, str], platform_input: Any, channel_id: int, label: Optional[str] = None
+    ) -> str:
         """Adds a channel ID to a subscriber's personal routing list for a platform."""
         uid = str(user_id).strip()
         sub_routes = self._get_subscriber_routes(uid)
@@ -338,8 +403,18 @@ class DashboardManager:
         if cid not in existing:
             existing.append(cid)
             sub_routes["channels"][key] = existing
-            self.save()
+        if label and label.strip():
+            sub_routes.setdefault("channel_labels", {}).setdefault(key, {})[str(cid)] = label.strip()[:80]
+        self.save()
         return key
+
+    def get_subscriber_route_label(
+        self, user_id: Union[int, str], route_type: str, platform_input: Any, target: Any
+    ) -> Optional[str]:
+        routes = self._get_subscriber_routes(user_id)
+        label_key = "channel_labels" if route_type == "channels" else "webhook_labels"
+        key = self._normalize_platform_key(platform_input)
+        return routes.get(label_key, {}).get(key, {}).get(str(target))
 
     def remove_subscriber_channel(self, user_id: Union[int, str], platform_input: Any, channel_id: int) -> str:
         """Removes a specific channel ID from a subscriber's routing list."""
@@ -354,7 +429,8 @@ class DashboardManager:
                 sub_routes["channels"][key] = existing
             else:
                 sub_routes["channels"].pop(key, None)
-            self.save()
+        sub_routes.get("channel_labels", {}).get(key, {}).pop(str(cid), None)
+        self.save()
         return key
 
     def clear_subscriber_channels(self, user_id: Union[int, str], platform_input: Optional[Any] = None) -> str:
@@ -363,9 +439,11 @@ class DashboardManager:
         sub_routes = self._get_subscriber_routes(uid)
         if platform_input is None:
             sub_routes["channels"] = {}
+            sub_routes["channel_labels"] = {}
         else:
             key = self._normalize_platform_key(platform_input)
             sub_routes.setdefault("channels", {}).pop(key, None)
+            sub_routes.setdefault("channel_labels", {}).pop(key, None)
         self.save()
         return uid
 
@@ -380,7 +458,9 @@ class DashboardManager:
         self.save()
         return key
 
-    def add_subscriber_webhook(self, user_id: Union[int, str], platform_input: Any, webhook_url: str) -> str:
+    def add_subscriber_webhook(
+        self, user_id: Union[int, str], platform_input: Any, webhook_url: str, label: Optional[str] = None
+    ) -> str:
         """Adds a webhook URL to a subscriber's routing list for a platform."""
         uid = str(user_id).strip()
         sub_routes = self._get_subscriber_routes(uid)
@@ -392,7 +472,9 @@ class DashboardManager:
         if url and url not in existing:
             existing.append(url)
             sub_routes["webhooks"][key] = existing
-            self.save()
+        if url and label and label.strip():
+            sub_routes.setdefault("webhook_labels", {}).setdefault(key, {})[url] = label.strip()[:80]
+        self.save()
         return key
 
     def clear_subscriber_webhooks(self, user_id: Union[int, str], platform_input: Optional[Any] = None) -> str:
@@ -401,9 +483,11 @@ class DashboardManager:
         sub_routes = self._get_subscriber_routes(uid)
         if platform_input is None:
             sub_routes["webhooks"] = {}
+            sub_routes["webhook_labels"] = {}
         else:
             key = self._normalize_platform_key(platform_input)
             sub_routes.setdefault("webhooks", {}).pop(key, None)
+            sub_routes.setdefault("webhook_labels", {}).pop(key, None)
         self.save()
         return uid
 
@@ -441,7 +525,27 @@ class DashboardManager:
         if key in self.config["webhooks"]:
             webhooks.extend(self._ensure_webhook_list(self.config["webhooks"][key]))
 
-        # 2. Environment variable routes from config.py
+        disabled = set(self.config.get("disabled_env_webhooks", {}).get(key, []))
+        env_webhook = self._get_environment_webhook(key)
+        if env_webhook and "platform" not in disabled:
+            webhooks.append(env_webhook)
+
+        # 3. Fallback to default webhook if empty
+        if not webhooks:
+            def_wh_list = self._ensure_webhook_list(self.config["webhooks"].get("Default"))
+            disabled_default = set(self.config.get("disabled_default_webhooks", {}).get(key, []))
+            webhooks.extend(url for url in def_wh_list if url not in disabled_default)
+            default_disabled = "default" in disabled or "default" in self.config.get(
+                "disabled_env_webhooks", {}
+            ).get("Default", [])
+            if DISCORD_WEBHOOK_URL and DISCORD_WEBHOOK_URL.strip() and not default_disabled:
+                webhooks.append(DISCORD_WEBHOOK_URL.strip())
+
+        # Deduplicate while preserving order
+        return list(dict.fromkeys(webhooks))
+
+    @staticmethod
+    def _get_environment_webhook(platform_key: str) -> Optional[str]:
         env_routes = {
             Platform.STAKE_COM.value: DISCORD_WEBHOOK_STAKE_COM,
             Platform.STAKE_US.value: DISCORD_WEBHOOK_STAKE_US,
@@ -455,19 +559,10 @@ class DashboardManager:
             Platform.GOATED.value: DISCORD_WEBHOOK_GOATED,
             Platform.WINNA.value: DISCORD_WEBHOOK_WINNA,
             Platform.THRILL.value: DISCORD_WEBHOOK_THRILL,
+            Platform.GAMBA.value: DISCORD_WEBHOOK_GAMBA,
         }
-        if key in env_routes and env_routes[key]:
-            webhooks.append(env_routes[key].strip())
-
-        # 3. Fallback to default webhook if empty
-        if not webhooks:
-            def_wh_list = self._ensure_webhook_list(self.config["webhooks"].get("Default"))
-            webhooks.extend(def_wh_list)
-            if DISCORD_WEBHOOK_URL and DISCORD_WEBHOOK_URL.strip():
-                webhooks.append(DISCORD_WEBHOOK_URL.strip())
-
-        # Deduplicate while preserving order
-        return list(dict.fromkeys(webhooks))
+        webhook = env_routes.get(platform_key)
+        return webhook.strip() if webhook and webhook.strip() else None
 
     def get_webhook(self, platform_input: Any) -> Optional[str]:
         """
@@ -476,7 +571,7 @@ class DashboardManager:
         webhooks = self.get_webhooks(platform_input)
         return webhooks[0] if webhooks else None
 
-    def add_webhook(self, platform_input: Any, webhook_url: str) -> str:
+    def add_webhook(self, platform_input: Any, webhook_url: str, label: Optional[str] = None) -> str:
         """
         Adds a webhook URL to the platform's multi-webhook routing list.
         """
@@ -488,7 +583,9 @@ class DashboardManager:
         if url not in existing:
             existing.append(url)
             self.config["webhooks"][key] = existing
-            self.save()
+        if label and label.strip():
+            self._set_route_label("webhooks", key, url, label)
+        self.save()
         return key
 
     def remove_webhook(self, platform_input: Any, webhook_url: str) -> str:
@@ -504,7 +601,17 @@ class DashboardManager:
                 self.config["webhooks"][key] = existing
             else:
                 self.config["webhooks"].pop(key, None)
-            self.save()
+        elif key != "Default" and url in self._ensure_webhook_list(self.config["webhooks"].get("Default")):
+            disabled_default = self.config.setdefault("disabled_default_webhooks", {}).setdefault(key, [])
+            if url not in disabled_default:
+                disabled_default.append(url)
+        disabled = self.config.setdefault("disabled_env_webhooks", {}).setdefault(key, [])
+        if url == self._get_environment_webhook(key) and "platform" not in disabled:
+            disabled.append("platform")
+        if DISCORD_WEBHOOK_URL and url == DISCORD_WEBHOOK_URL.strip() and "default" not in disabled:
+            disabled.append("default")
+        self.config.get("route_labels", {}).get("webhooks", {}).get(key, {}).pop(url, None)
+        self.save()
         return key
 
     def clear_webhooks(self, platform_input: Any) -> str:
@@ -513,6 +620,18 @@ class DashboardManager:
         """
         key = self._normalize_platform_key(platform_input)
         self.config["webhooks"].pop(key, None)
+        self.config.get("route_labels", {}).get("webhooks", {}).pop(key, None)
+        if key == "Default":
+            self.config["disabled_default_webhooks"] = {}
+        else:
+            default_webhooks = self._ensure_webhook_list(self.config["webhooks"].get("Default"))
+            if default_webhooks:
+                self.config.setdefault("disabled_default_webhooks", {})[key] = default_webhooks
+        disabled = self.config.setdefault("disabled_env_webhooks", {}).setdefault(key, [])
+        if self._get_environment_webhook(key) and "platform" not in disabled:
+            disabled.append("platform")
+        if DISCORD_WEBHOOK_URL and "default" not in disabled:
+            disabled.append("default")
         self.save()
         return key
 
@@ -523,8 +642,13 @@ class DashboardManager:
         key = self._normalize_platform_key(platform_input)
         if not webhook_url:
             self.config["webhooks"].pop(key, None)
+            self.config.get("route_labels", {}).get("webhooks", {}).pop(key, None)
         else:
             self.config["webhooks"][key] = [str(webhook_url).strip()]
+            labels = self.config.get("route_labels", {}).get("webhooks", {}).get(key, {})
+            for existing_url in list(labels):
+                if existing_url != str(webhook_url).strip():
+                    labels.pop(existing_url, None)
         self.save()
         return key
 
@@ -536,8 +660,13 @@ class DashboardManager:
         cleaned = self._ensure_webhook_list(webhook_urls)
         if cleaned:
             self.config["webhooks"][key] = cleaned
+            labels = self.config.get("route_labels", {}).get("webhooks", {}).get(key, {})
+            for existing_url in list(labels):
+                if existing_url not in cleaned:
+                    labels.pop(existing_url, None)
         else:
             self.config["webhooks"].pop(key, None)
+            self.config.get("route_labels", {}).get("webhooks", {}).pop(key, None)
         self.save()
         return key
 
@@ -548,6 +677,13 @@ class DashboardManager:
         key = self._normalize_platform_key(platform_input)
         self.config["channels"].pop(key, None)
         self.config["webhooks"].pop(key, None)
+        self.config.get("route_labels", {}).get("channels", {}).pop(key, None)
+        self.config.get("route_labels", {}).get("webhooks", {}).pop(key, None)
+        self.config.get("disabled_env_webhooks", {}).pop(key, None)
+        if key == "Default":
+            self.config["disabled_default_webhooks"] = {}
+        else:
+            self.config.get("disabled_default_webhooks", {}).pop(key, None)
         self.save()
         return key
 
@@ -566,44 +702,35 @@ class DashboardManager:
         Returns a complete routing map across all platforms for display in the Discord dashboard.
         Includes multi-channel IDs, multi-webhook URLs, and formatted display fields.
         """
-        platforms = [
-            Platform.STAKE_US,
-            Platform.STAKE_COM,
-            Platform.STAKE_US_VIP_NOTICES,
-            Platform.STAKE_COM_VIP_NOTICES,
-            Platform.SHUFFLE_US,
-            Platform.SHUFFLE_COM,
-            Platform.RAINBET,
-            Platform.DEGEN,
-            Platform.QZINO,
-            Platform.GOATED,
-            Platform.THRILL,
-            Platform.WINNA,
-            Platform.DUAL_STAKE,
-        ]
+        platforms = [platform for platform in Platform if platform != Platform.UNKNOWN]
 
         summary = {}
         for p in platforms:
             channels = self.get_channels(p)
             webhooks = self.get_webhooks(p)
+            channel_label_platform = p if p.value in self.config["channels"] else "Default"
+            webhook_label_platform = p if p.value in self.config["webhooks"] else "Default"
             primary_ch = channels[0] if channels else None
             primary_wh = webhooks[0] if webhooks else None
 
             # Format channel display
             if not channels:
                 ch_display = "❌ *Not Assigned*"
-            elif len(channels) == 1:
-                ch_display = f"<#{channels[0]}> (`{channels[0]}`)"
             else:
-                ch_display = ", ".join(f"<#{c}>" for c in channels) + f" (`{len(channels)} Channels`)"
+                ch_display = "\n".join(
+                    f"• **{self.get_route_label('channels', channel_label_platform, c) or 'Channel'}** <#{c}> (`{c}`)"
+                    for c in channels
+                )
 
             # Format webhook display
             if not webhooks:
                 wh_display = "❌ *Not Set*"
-            elif len(webhooks) == 1:
-                wh_display = "✅ *1 Webhook Active*"
             else:
-                wh_display = f"✅ *{len(webhooks)} Webhooks Active*"
+                wh_display = "\n".join(
+                    f"• **{self.get_route_label('webhooks', webhook_label_platform, url) or f'Webhook {index}'}** "
+                    "🔒 URL saved"
+                    for index, url in enumerate(webhooks, start=1)
+                )
 
             summary[p.value] = {
                 "emoji": p.emoji,
@@ -616,7 +743,7 @@ class DashboardManager:
                 "webhook_urls": webhooks,
                 "webhook_count": len(webhooks),
                 "webhooks_display": wh_display,
-                "webhook_masked": f"{primary_wh[:35]}...{primary_wh[-6:]}" if primary_wh and len(primary_wh) > 45 else (primary_wh or "Not Set")
+                "webhook_masked": "Configured" if primary_wh else "Not Set"
             }
 
         # Also add Default fallback
@@ -627,17 +754,20 @@ class DashboardManager:
 
         if not def_channels:
             def_ch_disp = "❌ *Not Assigned*"
-        elif len(def_channels) == 1:
-            def_ch_disp = f"<#{def_channels[0]}> (`{def_channels[0]}`)"
         else:
-            def_ch_disp = ", ".join(f"<#{c}>" for c in def_channels) + f" (`{len(def_channels)} Channels`)"
+            def_ch_disp = "\n".join(
+                f"• **{self.get_route_label('channels', 'Default', c) or 'Channel'}** <#{c}> (`{c}`)"
+                for c in def_channels
+            )
 
         if not def_webhooks:
             def_wh_disp = "❌ *Not Set*"
-        elif len(def_webhooks) == 1:
-            def_wh_disp = "✅ *1 Webhook Active*"
         else:
-            def_wh_disp = f"✅ *{len(def_webhooks)} Webhooks Active*"
+            def_wh_disp = "\n".join(
+                f"• **{self.get_route_label('webhooks', 'Default', url) or f'Webhook {index}'}** "
+                "🔒 URL saved"
+                for index, url in enumerate(def_webhooks, start=1)
+            )
 
         summary["Default"] = {
             "emoji": "🌐",
@@ -650,7 +780,7 @@ class DashboardManager:
             "webhook_urls": def_webhooks,
             "webhook_count": len(def_webhooks),
             "webhooks_display": def_wh_disp,
-            "webhook_masked": f"{def_prim_wh[:35]}...{def_prim_wh[-6:]}" if def_prim_wh and len(def_prim_wh) > 45 else (def_prim_wh or "Not Set")
+            "webhook_masked": "Configured" if def_prim_wh else "Not Set"
         }
 
         return summary
@@ -698,6 +828,8 @@ class DashboardManager:
                 return "pulsz"
             if platform_input == Platform.THRILL:
                 return "thrill"
+            if platform_input == Platform.GAMBA:
+                return "gamba"
             if platform_input == Platform.MODO:
                 return "modo"
             if platform_input == Platform.BABA:
@@ -749,6 +881,8 @@ class DashboardManager:
             return "pulsz"
         if "thrill" in p_str:
             return "thrill"
+        if "gamba" in p_str:
+            return "gamba"
         if "modo" in p_str:
             return "modo"
         if "baba" in p_str:

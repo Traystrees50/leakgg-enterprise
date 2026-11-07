@@ -8,7 +8,7 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 
 ## 🌟 Key Features
 
-- **Multi-Platform Support (24 Platforms + Dual Stake + VIP Notices)**:
+- **Multi-Platform Support (27 Platforms, including Dual Stake and VIP Notices)**:
   - 🎰 🇺🇸 **Stake.us** (`0xFEAA00` - Gold / Amber) • Signup: `https://www.stake.us/?c=selfmade`
   - 🎰 🌍 **Stake.com** (`0x1475E1` - Royal Blue) • Signup: `https://stake.com/?c=SELFMADE`
   - 👑 🇺🇸 **Stake.us - VIP Notices** (`0xFFB347` - Warm Amber) • Signup: `https://www.stake.us/?c=selfmade`
@@ -34,12 +34,13 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
   - 🌟 🎰 **WOWVEGAS** (`0x8B5CF6` - Violet) • Signup: `https://www.wowvegas.com/?raf=1274028`
   - 🎉 🎰 **YAYCASINO** (`0xEC4899` - Pink) • Signup: `https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8`
   - 🏆 🎁 **WINNA** (`0xFFD700` - Gold) • Signup: `https://winna.com/?bonus-center=true&SELFMADE`
+  - 🎲 🟢 **GAMBA** (`0x14B8A6` - Teal) • Signup: `https://gamba.com?c=bonuscash`
   - 🎰 🌐 **Dual Stake (US & COM)** (`0x8B5CF6` - Dual Indigo)
 
 - **Enterprise Interactive Dashboard (`/dashboard` & `!dashboard`)**:
-  - Full Discord UI control panel with **Platform Multi-Select Dropdown** and **Action Dropdown**.
-  - Configure **multiple channel IDs** and **multiple webhook URLs** (at least 2+ per platform).
-  - Add/remove channels, add/remove webhooks via secure modals, fast-bind current channels, and dispatch instant test embeds.
+  - Full Discord UI control panel with platform selectors covering every supported platform and a separate Default route.
+  - Configure multiple channel IDs and webhook URLs per platform; each destination has a human-readable label.
+  - Add/remove labeled channels and webhooks, fast-bind the current channel, and dispatch instant test embeds.
   - Live toggles for Real-time background sweep daemon and interval adjustment.
 
 - **Enterprise Health Monitor (`/dashboard` Health Button)**:
@@ -60,6 +61,8 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
   - **Stake.us**: `@highrollerscodeUS`, `@dailybonuscodeUS`, `t.me/codestats2`, and channel `1542279201`.
   - **Stake.com**: `@highrollerscode`, `@dailybonuscodes`, `t.me/codestats2`.
   - **Rainbet**: `@EddiesCodesRainbet` with dedicated drop format (Code, Redeem URL `https://rainbet.com/affiliates?modal=wallet&tab=redeem`, Reward, Wager, Claims).
+  - **GAMBA**: `@faircodes` is an aggregator; only posts explicitly identified as GAMBA are accepted. Posts for every other platform are ignored and cannot enter their routes as GAMBA.
+  - **WINNA / THRILL**: Monitored from their configured Telegram feeds.
   - **Degen**: `@degendotcom` with full image/media attachment previews.
   - **Shuffle**: `codestats2` for Shuffle.us and Shuffle.com drops.
   - **VIP Events**: Detects Stake.us `WEEKLY BOOST`, `MONTHLY BONUS`, and `VIP EVENTS` with complete text, links, and banners.
@@ -94,7 +97,10 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 | Command | Access | Type | Description |
 |---|---|---|---|
 | `/subscribe` / `!subscribe` | 🌐 Public | Hybrid | Subscribe for $2 in crypto to unlock full premium dashboard access in any server. |
-| `/activecodes` / `!activecodes` | 🌐 Public | Hybrid | Queries StakeStats.net live for active Stake.us & Stake.com drops with copyable codes and redeem links. |
+| `/activecodes` / `!activecodes` | 🌐 Public | Hybrid | Shows all active Stake.us and Stake.com codes from StakeStats.net. |
+| `/activeus` / `!activeus` | 🌐 Public | Hybrid | Shows only active Stake.us codes. |
+| `/activecom` / `!activecom` | 🌐 Public | Hybrid | Shows only active Stake.com codes. |
+| `/codes [platform]` / `!codes [platform]` | 🌐 Public | Hybrid | Queries active codes, optionally filtered to a platform. |
 | `/links` / `!links` | 🌐 Public | Hybrid | Displays all affiliate/signup links for every supported platform plus Discord and Kick. |
 | `!code` | 🌐 Public | Prefix | Manually submit a bonus code for validation and broadcast. Usage: `!code <platform> <code>` or `!code <code>`. |
 | `!post` | 🔒 Owner / Admin / Subscriber | Prefix | Manually broadcast a raw event/post to selected platform channels. Usage: `!post <platform> <message>`. |

@@ -418,10 +418,6 @@ class DiscordNotifier:
                             def __init__(self):
                                 super().__init__(timeout=0)
 
-                            @discord.ui.button(label="🔗 Claim URL", style=discord.ButtonStyle.link, url=redeem_url)
-                            async def _claim_button(self, interaction: discord.Interaction):
-                                pass  # Link button — no handler needed
-
                             @discord.ui.button(label="🔎 Code Checker", style=discord.ButtonStyle.secondary)
                             async def _code_checker_button(self, interaction: discord.Interaction):
                                 try:
@@ -455,6 +451,11 @@ class DiscordNotifier:
                                         pass
 
                         view = _BonusDropView()
+                        view.add_item(discord.ui.Button(
+                            label="🔗 Claim URL",
+                            style=discord.ButtonStyle.link,
+                            url=redeem_url
+                        ))
                     except Exception as ve:
                         logger.warning(f"Failed to build interactive view: {ve}")
 

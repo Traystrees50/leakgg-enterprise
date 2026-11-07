@@ -80,12 +80,7 @@ class BaseScraper:
                 break
 
         if not extracted_wager:
-            if "3x" in text.lower():
-                extracted_wager = "3x Rollover (Standard)"
-            elif "no wager" in text.lower() or "0x" in text.lower():
-                extracted_wager = "0x (No Wagering)"
-            else:
-                extracted_wager = "Standard Playthrough (3x SC)"
+            extracted_wager = "Not specified"
 
         return extracted_value, extracted_wager
 

@@ -291,6 +291,37 @@ def cmd_test_discord():
             description="Exclusive Qzino promotion"
         ),
         BonusCodeItem(
+            code="WINNA_TEST",
+            platform=Platform.WINNA,
+            amount_value="Test bonus drop",
+            wager_requirement="Not specified",
+            source_url="https://t.me/EddiesCodesWinna",
+            source_name="@EddiesCodesWinna",
+            is_affiliate=False,
+            description="[TEST EVENT] WINNA route and embed formatting check."
+        ),
+        BonusCodeItem(
+            code="THRILL_TEST",
+            platform=Platform.THRILL,
+            amount_value="Test bonus drop",
+            wager_requirement="Not specified",
+            source_url="https://t.me/thrillcodes",
+            source_name="@thrillcodes",
+            is_affiliate=False,
+            description="[TEST EVENT] THRILL route and embed formatting check."
+        ),
+        BonusCodeItem(
+            code="GAMBA_TEST",
+            platform=Platform.GAMBA,
+            amount_value="Test bonus drop",
+            wager_requirement="Not specified",
+            source_url="https://t.me/faircodes",
+            source_name="@faircodes (Gamba only)",
+            is_affiliate=False,
+            custom_redeem_link="https://gamba.com",
+            description="[TEST EVENT] GAMBA route check; Faircodes monitoring accepts GAMBA posts only."
+        ),
+        BonusCodeItem(
             code="mjp6axxg",
             platform=Platform.DUAL_STAKE,
             amount_value="$3.00 (US & COM)",
