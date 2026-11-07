@@ -12,6 +12,7 @@ from config import (
     COLOR_THRILL, COLOR_MODO, COLOR_BABA,
     COLOR_COOKED_US, COLOR_COOKED_COM, COLOR_WOWVEGAS, COLOR_YAYCASINO,
     COLOR_WINNA,
+    COLOR_GAMBA,
     AFFILIATE_SIGNUP_LINKS
 )
 
@@ -42,6 +43,7 @@ class Platform(str, Enum):
     WOWVEGAS = "WOWVEGAS"
     YAYCASINO = "YAYCASINO"
     WINNA = "WINNA"
+    GAMBA = "GAMBA"
     UNKNOWN = "Unknown Platform"
 
     @classmethod
@@ -99,6 +101,8 @@ class Platform(str, Enum):
             return cls.YAYCASINO
         elif "winna" in t:
             return cls.WINNA
+        elif "gamba" in t:
+            return cls.GAMBA
         return cls.UNKNOWN
 
     @property
@@ -130,6 +134,7 @@ class Platform(str, Enum):
             Platform.WOWVEGAS: COLOR_WOWVEGAS,
             Platform.YAYCASINO: COLOR_YAYCASINO,
             Platform.WINNA: COLOR_WINNA,
+            Platform.GAMBA: COLOR_GAMBA,
         }
         return colors.get(self, COLOR_DEFAULT)
 
@@ -162,6 +167,7 @@ class Platform(str, Enum):
             Platform.WOWVEGAS: "🌟 🎰",
             Platform.YAYCASINO: "🎉 🎰",
             Platform.WINNA: "🏆 🎁",
+            Platform.GAMBA: "🎲 🟢",
         }
         return emojis.get(self, "🎁")
 
@@ -194,6 +200,7 @@ class Platform(str, Enum):
             Platform.WOWVEGAS: "@WOWVEGASCODES",
             Platform.YAYCASINO: "@YAYCASINOCODES",
             Platform.WINNA: "@WINNACODES",
+            Platform.GAMBA: "@GAMBACODES",
         }
         return tags.get(self, "")
 
@@ -225,6 +232,7 @@ class Platform(str, Enum):
             Platform.WOWVEGAS: "https://www.wowvegas.com",
             Platform.YAYCASINO: "https://www.yaycasino.com",
             Platform.WINNA: "https://winna.com",
+            Platform.GAMBA: "https://gamba.com",
         }
         return urls.get(self, "https://stake.com")
 
@@ -292,6 +300,8 @@ class BonusCodeItem:
             return "https://thrill.com/?r=selfmade"
         elif self.platform == Platform.WINNA:
             return "https://winna.com/?bonus-center=true&SELFMADE"
+        elif self.platform == Platform.GAMBA:
+            return "https://gamba.com"
         else:
             return f"https://stake.com/settings/offers?type=drop&code={encoded_code}&currency=ltc&modal=redeemBonus"
 
@@ -370,6 +380,8 @@ class BonusCodeItem:
             return "https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8"
         elif self.platform == Platform.WINNA:
             return "https://winna.com/?bonus-center=true&SELFMADE"
+        elif self.platform == Platform.GAMBA:
+            return AFFILIATE_SIGNUP_LINKS[Platform.GAMBA.value]
         return "https://stake.com/?c=SELFMADE"
 
     def to_stake_us_item(self) -> "BonusCodeItem":

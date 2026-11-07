@@ -22,6 +22,7 @@ DISCORD_WEBHOOK_DEGEN = os.getenv("DISCORD_WEBHOOK_DEGEN", "")
 DISCORD_WEBHOOK_GOATED = os.getenv("DISCORD_WEBHOOK_GOATED", "")
 DISCORD_WEBHOOK_WINNA = os.getenv("DISCORD_WEBHOOK_WINNA", "")
 DISCORD_WEBHOOK_THRILL = os.getenv("DISCORD_WEBHOOK_THRILL", "")
+DISCORD_WEBHOOK_GAMBA = os.getenv("DISCORD_WEBHOOK_GAMBA", "")
 
 # Discord Bot Token (for on-demand !code and /activecodes commands)
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
@@ -58,6 +59,7 @@ COLOR_COOKED_COM = 0xF59E0B   # COOKED.COM Amber
 COLOR_WOWVEGAS = 0x8B5CF6     # WOWVEGAS Violet
 COLOR_YAYCASINO = 0xEC4899    # YAYCASINO Pink
 COLOR_WINNA = 0xFFD700        # WINNA Gold
+COLOR_GAMBA = 0x14B8A6        # GAMBA Teal
 COLOR_DEFAULT = 0x5865F2      # Discord Blurple fallback
 
 # Affiliate Signup Links per Platform
@@ -87,6 +89,7 @@ AFFILIATE_SIGNUP_LINKS = {
     "WOWVEGAS": os.getenv("AFFILIATE_WOWVEGAS", "https://www.wowvegas.com/?raf=1274028"),
     "YAYCASINO": os.getenv("AFFILIATE_YAYCASINO", "https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8"),
     "WINNA": os.getenv("AFFILIATE_WINNA", "https://winna.com/?bonus-center=true&SELFMADE"),
+    "GAMBA": os.getenv("AFFILIATE_GAMBA", "https://gamba.com?c=bonuscash"),
 }
 
 # Platform-specific KICK stream links and labels
@@ -123,6 +126,7 @@ TELEGRAM_CHANNELS = {
     "degen": ["degendotcom"],
     "rainbet": ["EddiesCodesRainbet"],
     "winna": ["EddiesCodesWinna"],
+    "gamba": ["faircodes"],
     "shuffle": ["anyclaimershuffle", "codestats2"],
     "thrill": ["thrillcodes"],
     "qzino": ["qzino_code", "qzino", "qzinodotai"],

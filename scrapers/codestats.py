@@ -84,8 +84,22 @@ class CodeStatsScraper:
                 val_m = re.search(r"(\$?\d+(?:\.\d+)?\s*(?:SC|GC|USD|\$)?)", text, re.I)
                 val = val_m.group(1).strip() if val_m else "Bonus Drop"
 
-                wager_m = re.search(r"(\$?[0-9,]+\s*(?:wager|requirement|playthrough)[^\.]*)", text, re.I)
-                wager = wager_m.group(1).strip() if wager_m else "Low Wager Requirement"
+                wager_m = re.search(
+                    r"(?:7\s*[- ]?\s*day\s*)?(?:wager\s*requirement|wager\s*required|wager|"
+                    r"requirement|playthrough)\s*[:\-]\s*"
+                    r"((?:[$€£]\s*)?\d[\d,]*(?:\.\d+)?\s*(?:x|SC|GC|USD|sweeps|stake cash)?"
+                    r"(?:\s+(?:wagered|wager|rollover|playthrough))?)",
+                    text,
+                    re.I,
+                )
+                if not wager_m:
+                    wager_m = re.search(
+                        r"((?:[$€£]\s*)?\d[\d,]*(?:\.\d+)?\s*(?:x|SC|GC|USD|sweeps|stake cash)?"
+                        r"\s*(?:wagered|wagering|wager|requirement|playthrough)[^\.]*)",
+                        text,
+                        re.I,
+                    )
+                wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
                 item = BonusCodeItem(
                     code=code,
@@ -162,11 +176,17 @@ class CodeStatsScraper:
                 elif platform == Platform.SHUFFLE_COM:
                     custom_link = f"https://shuffle.com/?modal=c&md-code={code}"
 
+                raw_wager_requirement = message.get("wagerRequirement")
+                wager_requirement = (
+                    str(raw_wager_requirement).strip()
+                    if raw_wager_requirement is not None and str(raw_wager_requirement).strip()
+                    else "Not specified"
+                )
                 items.append(BonusCodeItem(
                     code=code,
                     platform=platform,
                     amount_value=str(message.get("amount") or "Bonus Drop"),
-                    wager_requirement=str(message.get("wagerRequirement") or "Low Wager Requirement"),
+                    wager_requirement=wager_requirement,
                     claims_count=str(message.get("dropLimit") or "Unlimited / Open"),
                     source_url=self.base_url,
                     source_name="CodeStats.gg Live Feed",

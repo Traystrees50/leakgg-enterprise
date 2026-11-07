@@ -33,9 +33,15 @@ _RE_CODE_HASH = re.compile(r"\b(stake(?:com|us)[a-z0-9]{6,25})\b", re.I)
 _RE_CODE_RAINBET = re.compile(r"(?:Click\s+Code\s+To\s+Copy|Code)[:\s]+([A-Za-z0-9_\-]+)", re.I)
 _RE_CODE_QZINO_STANDALONE = re.compile(r"\n\s*([A-Za-z0-9]{4,16})\s*\n\s*-\s*(?:Value|Total|Requirement)", re.I)
 _RE_VALUE_GENERIC = re.compile(r"(?:Claim\s*Amount|Amount|Reward|Value)[:\s]+(\$?[0-9.,]+(?:\s*USD|\s*SC|\%)?(?:\s*\+\s*\d+\s*FS)?)", re.I)
-_RE_WAGER_GENERIC = re.compile(r"(?:7\s*Day\s*Wager\s*Requirement|Wager\s*Requirement|Wager\s*Required|Wager)[:\s]+(\$?[0-9,]+(?:\s*wagered)?)", re.I)
+_RE_WAGER_GENERIC = re.compile(
+    r"(?:7\s*[- ]?\s*day\s*wager\s*requirement|wager\s*requirement|wager\s*required|"
+    r"wager|requirement|playthrough)[:\s-]+"
+    r"((?:[$€£]\s*)?\d[\d,]*(?:\.\d+)?\s*(?:x|SC|GC|USD|sweeps|stake cash)?"
+    r"(?:\s+(?:wagered|wager|rollover|playthrough))?)",
+    re.I,
+)
 _RE_CLAIMS_GENERIC = re.compile(r"(?:Total\s*Claims|Claims|Claim\s*Limit)[:\s]+([0-9,]+)", re.I)
-_RE_WAGER_ALT = re.compile(r"(\$[0-9,]+\s*(?:wagered|wager|rollover))", re.I)
+_RE_WAGER_ALT = re.compile(r"([$€£]\s*\d[\d,]*(?:\.\d+)?\s*(?:wagered|wager|rollover))", re.I)
 _RE_VALUE_ALT = re.compile(r"(\$\d+(?:\.\d+)?\s*(?:USD|SC|FREE|BONUS)?)", re.I)
 _RE_STAKE_US_LINK = re.compile(r"https?://(?:www\.)?stake\.us/settings/offers[^\s\)]+", re.I)
 _RE_STAKE_COM_LINK = re.compile(r"https?://(?:www\.)?stake\.com/settings/offers[^\s\)]+", re.I)
@@ -237,7 +243,7 @@ class TelegramScraper:
         reward = reward_m.group(1).strip() if reward_m else "$1.00 Drop"
 
         wager_m = _RE_WAGER_GENERIC.search(text)
-        wager = wager_m.group(1).strip() if wager_m else "$4,000 Wager Requirement"
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
         claims_m = _RE_CLAIMS_GENERIC.search(text)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -272,7 +278,7 @@ class TelegramScraper:
         reward = reward_m.group(1).strip() if reward_m else "$1.00 Drop"
 
         wager_m = _RE_WAGER_GENERIC.search(text)
-        wager = wager_m.group(1).strip() if wager_m else "$4,000 Wager Requirement"
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
         claims_m = _RE_CLAIMS_GENERIC.search(text)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -314,7 +320,7 @@ class TelegramScraper:
         reward = reward_m.group(1).strip() if reward_m else "$1.00 Drop"
 
         wager_m = _RE_WAGER_GENERIC.search(text)
-        wager = wager_m.group(1).strip() if wager_m else "$4,000 Wager Requirement"
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
         claims_m = _RE_CLAIMS_GENERIC.search(text)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -334,6 +340,51 @@ class TelegramScraper:
             image_url=image_url,
             event_datetime=event_datetime,
             description=clean_text
+        )
+
+    def parse_gamba_message(
+        self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None
+    ) -> Optional[BonusCodeItem]:
+        """Parses only posts explicitly identified as GAMBA from the faircodes aggregator."""
+        source = urllib.parse.urlparse(msg_url)
+        path_parts = [part for part in source.path.split("/") if part]
+        if path_parts and path_parts[0].lower() == "s":
+            path_parts = path_parts[1:]
+        if source.hostname not in {"t.me", "www.t.me"} or not path_parts or path_parts[0].casefold() != "faircodes":
+            return None
+        if "gamba" not in text.lower():
+            return None
+
+        code_match = _RE_CODE_GENERIC.search(text)
+        if not code_match:
+            code_match = re.search(
+                r"(?:^|\n)\s*(?:code|promo code|drop code)\s*[:\-]\s*([A-Za-z0-9_-]{4,35})",
+                text,
+                re.I,
+            )
+        if not code_match:
+            return None
+
+        code = code_match.group(1).strip()
+        if code.upper() in {"GAMBA", "BONUS", "DROP", "CODE", "REWARD"}:
+            return None
+
+        reward_match = _RE_VALUE_GENERIC.search(text)
+        wager_match = _RE_WAGER_GENERIC.search(text)
+        claims_match = _RE_CLAIMS_GENERIC.search(text)
+        return BonusCodeItem(
+            code=code,
+            platform=Platform.GAMBA,
+            amount_value=reward_match.group(1).strip() if reward_match else "Gamba Bonus Drop",
+            wager_requirement=wager_match.group(1).strip() if wager_match else "Not specified",
+            claims_count=claims_match.group(1).strip() if claims_match else None,
+            source_url=msg_url,
+            source_name="@faircodes (Gamba only)",
+            is_affiliate=False,
+            image_url=image_url,
+            custom_redeem_link="https://gamba.com",
+            event_datetime=event_datetime,
+            description=strip_promo_footer(text.strip()),
         )
 
     def parse_degen_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
@@ -385,7 +436,7 @@ class TelegramScraper:
             wager = wager_m.group(1).strip()
         else:
             w_alt = _RE_WAGER_ALT.search(text)
-            wager = w_alt.group(1).strip() if w_alt else "Standard Low Wager"
+            wager = w_alt.group(1).strip() if w_alt else "Not specified"
 
         claims_m = _RE_CLAIMS_GENERIC.search(text)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -454,7 +505,7 @@ class TelegramScraper:
             val = v_alt.group(1).strip() if v_alt else "Standard Bonus"
 
         wager_m = re.search(r"(?:-\s*)?(?:Requirements|Requirement|Wager\s*Requirement|Wager\s*Required|Wager|Playthrough)[:\s]+([^\n\r]+)", text, re.I)
-        wager = wager_m.group(1).strip() if wager_m else "Standard Low Wager"
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
         claims_m = re.search(r"(?:-\s*)?(?:Total\s*Drop|Total\s*Claims|Claims|Claim\s*Limit)[:\s]+([^\n\r]+)", text, re.I)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -571,126 +622,126 @@ class TelegramScraper:
                     val = "User Submitted (US & COM)"
 
             if not wager:
-                wager = "Standard 7-Day Requirement"
+                wager = "Not specified"
 
         elif "SHUFFLE.US" in t_upper or ("SHUFFLE" in t_upper and "US" in t_upper and "SC" in t_upper):
             platform = Platform.SHUFFLE_US
             if not val:
                 val = "Shuffle.us Bonus Drop"
             if not wager:
-                wager = "7-Day Wager Requirement"
+                wager = "Not specified"
 
         elif "SHUFFLE" in t_upper or "SHUFFLE.COM" in t_upper:
             platform = Platform.SHUFFLE_COM
             if not val:
                 val = "Shuffle.com Bonus Drop"
             if not wager:
-                wager = "7-Day Wager Requirement"
+                wager = "Not specified"
 
         elif "STAKE US" in t_upper or "STAKE.US" in t_upper or code.lower().startswith("stakeus"):
             platform = Platform.STAKE_US
             if not val:
                 val = "Stake.us Bonus Drop"
             if not wager:
-                wager = "Standard 7-Day Requirement"
+                wager = "Not specified"
 
         elif "STAKE BONUS" in t_upper or "STAKE.COM" in t_upper or code.lower().startswith("stakecom"):
             platform = Platform.STAKE_COM
             if not val:
                 val = "Stake.com Bonus Drop"
             if not wager:
-                wager = "Standard 7-Day Requirement"
+                wager = "Not specified"
 
         elif "RAINBET" in t_upper:
             platform = Platform.RAINBET
             if not val:
                 val = "Rainbet Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "QZINO" in t_upper:
             platform = Platform.QZINO
             if not val:
                 val = "Qzino Bonus Drop"
             if not wager:
-                wager = "Standard Low Wager"
+                wager = "Not specified"
 
         elif "DEGEN" in t_upper:
             platform = Platform.DEGEN
             if not val:
                 val = "Degen Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "GOATED" in t_upper:
             platform = Platform.GOATED
             if not val:
                 val = "Goated Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "THRILL" in t_upper:
             platform = Platform.THRILL
             if not val:
                 val = "Thrill Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "WINNA" in t_upper:
             platform = Platform.WINNA
             if not val:
                 val = "Winna Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "PULSZ" in t_upper:
             platform = Platform.PULSZ
             if not val:
                 val = "PULSZ Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "MODO" in t_upper:
             platform = Platform.MODO
             if not val:
                 val = "MODO Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "BABA" in t_upper or "BABACASINO" in t_upper:
             platform = Platform.BABA
             if not val:
                 val = "BABA Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "COOKED.US" in t_upper or "COOKED US" in t_upper:
             platform = Platform.COOKED_US
             if not val:
                 val = "COOKED.US Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "COOKED.COM" in t_upper or "COOKED COM" in t_upper:
             platform = Platform.COOKED_COM
             if not val:
                 val = "COOKED.COM Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "WOWVEGAS" in t_upper:
             platform = Platform.WOWVEGAS
             if not val:
                 val = "WOWVEGAS Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         elif "YAYCASINO" in t_upper:
             platform = Platform.YAYCASINO
             if not val:
                 val = "YAYCASINO Bonus Drop"
             if not wager:
-                wager = "Standard Wager Requirement"
+                wager = "Not specified"
 
         else:
             if "sc" in t_lower:
@@ -700,7 +751,7 @@ class TelegramScraper:
             if not val:
                 val = "Bonus Drop"
             if not wager:
-                wager = "Standard Requirement"
+                wager = "Not specified"
 
         is_hr = (
             "HIGH ROLLER" in t_upper or
@@ -878,7 +929,7 @@ class TelegramScraper:
                     code=code_m.group(1).strip(),
                     platform=Platform.SHUFFLE_US,
                     amount_value=val_m.group(1).strip() if val_m else "Shuffle.us Drop",
-                    wager_requirement=wager_m.group(1).strip() if wager_m else "7-Day Wager Requirement",
+                    wager_requirement=wager_m.group(1).strip() if wager_m else "Not specified",
                     claims_count=claims_m.group(1).strip() if claims_m else None,
                     source_url=msg_url,
                     source_name=f"@{channel_name}",
@@ -900,7 +951,7 @@ class TelegramScraper:
                     code=code_m.group(1).strip(),
                     platform=Platform.SHUFFLE_COM,
                     amount_value=val_m.group(1).strip() if val_m else "Shuffle.com Drop",
-                    wager_requirement=wager_m.group(1).strip() if wager_m else "7-Day Wager Requirement",
+                    wager_requirement=wager_m.group(1).strip() if wager_m else "Not specified",
                     claims_count=claims_m.group(1).strip() if claims_m else None,
                     source_url=msg_url,
                     source_name=f"@{channel_name}",
@@ -953,7 +1004,7 @@ class TelegramScraper:
         wager = wager_m.group(1).strip() if wager_m else ""
         if not wager:
             w_alt = re.search(r"([0-9,]+\s*(?:SC|USD|\$)?\s*(?:played|wagered)[^\n]*)", text, re.I)
-            wager = w_alt.group(1).strip() if w_alt else "Standard 7-Day Requirement"
+            wager = w_alt.group(1).strip() if w_alt else "Not specified"
 
         claims_m = re.search(r"(?:Claim Limit|Total Drop Limit|Claims)\s*:\s*([^\n\r]+)", text, re.I)
         claims = claims_m.group(1).strip() if claims_m else None
@@ -996,7 +1047,13 @@ class TelegramScraper:
         Scrapes a single Telegram channel for bonus codes and drops.
         Enforces maximum age of 4 days for all events.
         """
-        clean_name = channel_name.replace("@", "").strip()
+        clean_name = (
+            channel_name.replace("@", "")
+            .replace("https://t.me/s/", "")
+            .replace("https://t.me/", "")
+            .strip("/")
+            .strip()
+        )
         html = self.fetch_channel_html(clean_name)
         if not html:
             return []
@@ -1034,7 +1091,9 @@ class TelegramScraper:
                     continue
 
             item: Optional[BonusCodeItem] = None
-            if "eddiescodesrainbet" in clean_name.lower():
+            if clean_name.casefold() == "faircodes":
+                item = self.parse_gamba_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "eddiescodesrainbet" in clean_name.lower():
                 item = self.parse_rainbet_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
             elif "winna" in clean_name.lower():
                 item = self.parse_winna_message(msg_text, msg_url, img_url, event_datetime=msg_dt)

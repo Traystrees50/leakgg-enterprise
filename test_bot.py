@@ -5,7 +5,7 @@ import asyncio
 import datetime
 import tempfile
 import uuid
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import timezone
 from models import BonusCodeItem, Platform
 from filters import (
@@ -53,6 +53,29 @@ class TestLeakedGGMonitoring(unittest.TestCase):
         ))
 
         self.assertEqual(scraper.scrape_codes(), [])
+
+    def test_codestats_parses_label_first_decimal_wager(self):
+        scraper = CodeStatsScraper(base_url="https://codestats.test")
+        scraper.session.fetch_json = MagicMock(return_value=None)
+        scraper.session.fetch_text = MagicMock(return_value=(
+            '<article class="code-card">'
+            'Stake.com Code: TESTCODE123 Value: $5 '
+            'Wager Requirement: $12,500.50'
+            '</article>'
+        ))
+
+        items = scraper.scrape_codes()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].wager_requirement, "$12,500.50")
+
+    def test_site_scraper_does_not_invent_wager_multipliers(self):
+        scraper = SiteScraper()
+        _, wager = scraper.extract_value_and_wager_from_text(
+            "Stake.com bonus code: SAMPLE advertises a 10x reward"
+        )
+
+        self.assertEqual(wager, "Not specified")
 
     def test_all_platforms_colors_and_signup_links(self):
         # Platform detection from text
@@ -149,6 +172,119 @@ class TestLeakedGGMonitoring(unittest.TestCase):
         self.assertEqual(item.redeem_link, "https://rainbet.com/affiliates?modal=wallet&tab=redeem")
         self.assertEqual(item.affiliate_signup_link, "https://rainbet.com/?r=murphy")
 
+    def test_faircodes_only_yields_explicit_gamba_posts(self):
+        tg = TelegramScraper(channels={"gamba": ["faircodes"]})
+        gamba_text = "GAMBA Bonus Drop\nCode: GambaCase27\nReward: $5\nWager Required: $100"
+        non_gamba_text = "Stake.com bonus drop\nCode: STAKECASE27\nReward: $5"
+
+        gamba = tg.parse_gamba_message(gamba_text, "https://t.me/faircodes/100")
+        self.assertIsNotNone(gamba)
+        self.assertEqual(gamba.code, "GambaCase27")
+        self.assertEqual(gamba.platform, Platform.GAMBA)
+        self.assertEqual(gamba.wager_requirement, "$100")
+        self.assertFalse(gamba.is_affiliate)
+        self.assertIsNone(tg.parse_gamba_message(non_gamba_text, "https://t.me/faircodes/101"))
+        self.assertIsNone(tg.parse_gamba_message(gamba_text, "https://t.me/otherchannel/100"))
+
+        event_date = datetime.datetime.now(timezone.utc).isoformat()
+        tg.fetch_channel_html = MagicMock(return_value=(
+            '<div class="tgme_widget_message_wrap">'
+            '<div class="tgme_widget_message_text">Stake.com bonus drop<br>Code: STAKECASE27</div>'
+            '<a class="tgme_widget_message_date" href="https://t.me/faircodes/101">'
+            f'<time datetime="{event_date}"></time></a></div>'
+            '<div class="tgme_widget_message_wrap">'
+            '<div class="tgme_widget_message_text">GAMBA Bonus Drop<br>Code: GambaCase27<br>Reward: $5</div>'
+            '<a class="tgme_widget_message_date" href="https://t.me/faircodes/102">'
+            f'<time datetime="{event_date}"></time></a></div>'
+        ))
+        items = tg.scrape_channel("faircodes")
+        self.assertEqual([(item.code, item.platform) for item in items], [("GambaCase27", Platform.GAMBA)])
+
+        tracker = CodeTracker(self.test_state_file)
+        self.assertTrue(tracker.mark_seen(items[0]))
+        duplicate = BonusCodeItem(
+            code=items[0].code,
+            platform=Platform.GAMBA,
+            amount_value="$5",
+            wager_requirement="Not specified",
+            source_url="https://t.me/faircodes/103",
+            source_name="@faircodes (Gamba only)",
+            is_affiliate=False,
+        )
+        self.assertFalse(tracker.mark_seen(duplicate))
+
+    def test_wager_parsers_keep_amount_precision_and_units(self):
+        tg = TelegramScraper()
+        cases = [
+            (tg.parse_rainbet_message, "Wager Required: $12,500.50", "$12,500.50"),
+            (tg.parse_winna_message, "Wager Requirement: 2,500 SC", "2,500 SC"),
+            (tg.parse_thrill_message, "Playthrough: 15x", "15x"),
+        ]
+
+        for index, (parser, requirement, expected) in enumerate(cases):
+            with self.subTest(requirement=requirement):
+                item = parser(
+                    f"Click Code To Copy: TESTCODE{index}\nReward: $2\n{requirement}",
+                    f"https://t.me/test/{index}",
+                )
+                self.assertIsNotNone(item)
+                self.assertEqual(item.wager_requirement, expected)
+
+    def test_missing_telegram_wager_is_not_fabricated(self):
+        tg = TelegramScraper()
+        parsers = [
+            tg.parse_rainbet_message,
+            tg.parse_winna_message,
+            tg.parse_thrill_message,
+        ]
+
+        for index, parser in enumerate(parsers):
+            with self.subTest(parser=parser.__name__):
+                item = parser(
+                    f"Click Code To Copy: TESTCODE{index}\nReward: $2",
+                    f"https://t.me/test/{index}",
+                )
+                self.assertIsNotNone(item)
+                self.assertEqual(item.wager_requirement, "Not specified")
+
+    def test_stakestats_formats_wager_amount_without_rounding_or_zero_fallback(self):
+        poller = StakeStatsPoller()
+        poller.fetch_live_codes = MagicMock(return_value=[
+            {
+                "code": "DECIMALWAGER",
+                "status": {"US": "Available"},
+                "value": "2",
+                "wager": "6084.75",
+            },
+            {
+                "code": "MISSINGWAGER",
+                "status": {"COM": "Available"},
+                "value": None,
+                "wager": None,
+            },
+            {
+                "code": "ZEROWAGER",
+                "status": {"US": "Available"},
+                "value": "0",
+                "wager": 0,
+            },
+            {
+                "code": "BADSTATUS",
+                "status": None,
+                "value": "2",
+                "wager": "1000",
+            },
+        ])
+
+        active_us, active_com = poller.get_active_codes()
+
+        self.assertEqual(len(active_us), 2)
+        self.assertEqual(active_us[0].wager_requirement, "$6,084.75 (7-Day Wager)")
+        self.assertEqual(active_us[1].wager_requirement, "$0 (7-Day Wager)")
+        self.assertEqual(len(active_com), 1)
+        self.assertEqual(active_com[0].wager_requirement, "Not specified")
+        self.assertEqual(active_com[0].amount_value, "Not specified")
+
     def test_degen_telegram_parsing_with_media(self):
         tg = TelegramScraper()
         notifier = DiscordNotifier()
@@ -219,6 +355,20 @@ Enjoy and good luck Degens! 🎰"""
 
     def test_stakestats_poller_and_activecodes(self):
         poller = StakeStatsPoller()
+        poller.fetch_live_codes = MagicMock(return_value=[
+            {
+                "code": "TESTUS",
+                "status": {"US": "Available", "COM": "Unavailable"},
+                "value": "2",
+                "wager": "5000",
+            },
+            {
+                "code": "TESTCOM",
+                "status": {"US": "Unavailable", "COM": "Available"},
+                "value": "2",
+                "wager": "10000",
+            },
+        ])
         active_us, active_com = poller.get_active_codes()
         self.assertIsInstance(active_us, list)
         self.assertIsInstance(active_com, list)
@@ -281,17 +431,18 @@ Enjoy and good luck Degens! 🎰"""
         dm = DashboardManager(self.test_routes_file)
         
         # Test adding multiple channels for a single platform (at least 2 channels)
-        dm.add_channel("Stake.us", 111111111111111111)
-        dm.add_channel("Stake.us", 222222222222222222)
+        dm.add_channel("Stake.us", 111111111111111111, "Server A / #codes")
+        dm.add_channel("Stake.us", 222222222222222222, "Server B / #codes")
         channels = dm.get_channels("Stake.us")
         self.assertEqual(len(channels), 2)
         self.assertIn(111111111111111111, channels)
         self.assertIn(222222222222222222, channels)
         self.assertEqual(dm.get_channel("Stake.us"), 111111111111111111)
+        self.assertEqual(dm.get_route_label("channels", "Stake.us", 111111111111111111), "Server A / #codes")
 
         # Test adding multiple webhooks for a single platform (at least 2 webhooks)
-        dm.add_webhook("Stake.us", "https://discord.com/api/webhooks/111/hook1")
-        dm.add_webhook("Stake.us", "https://discord.com/api/webhooks/222/hook2")
+        dm.add_webhook("Stake.us", "https://discord.com/api/webhooks/111/hook1", "Server A / Drops")
+        dm.add_webhook("Stake.us", "https://discord.com/api/webhooks/222/hook2", "Server B / Alerts")
         webhooks = dm.get_webhooks("Stake.us")
         self.assertEqual(len(webhooks), 2)
         self.assertIn("https://discord.com/api/webhooks/111/hook1", webhooks)
@@ -300,9 +451,11 @@ Enjoy and good luck Degens! 🎰"""
         # Test channel and webhook removal
         dm.remove_channel("Stake.us", 111111111111111111)
         self.assertEqual(dm.get_channels("Stake.us"), [222222222222222222])
+        self.assertIsNone(dm.get_route_label("channels", "Stake.us", 111111111111111111))
 
         dm.remove_webhook("Stake.us", "https://discord.com/api/webhooks/111/hook1")
         self.assertEqual(dm.get_webhooks("Stake.us"), ["https://discord.com/api/webhooks/222/hook2"])
+        self.assertIsNone(dm.get_route_label("webhooks", "Stake.us", "https://discord.com/api/webhooks/111/hook1"))
 
         # Test default fallback channel & webhook
         dm.add_channel("Default", 999999999999999999)
@@ -319,12 +472,78 @@ Enjoy and good luck Degens! 🎰"""
         self.assertEqual(dm2.get_channels("Stake.us"), [222222222222222222])
         self.assertEqual(dm2.get_webhooks("Stake.us"), ["https://discord.com/api/webhooks/222/hook2"])
         self.assertEqual(dm2.get_setting("check_interval_seconds"), 45)
+        self.assertEqual(dm2.get_route_label("channels", "Stake.us", 222222222222222222), "Server B / #codes")
+        self.assertEqual(
+            dm2.get_route_label("webhooks", "Stake.us", "https://discord.com/api/webhooks/222/hook2"),
+            "Server B / Alerts",
+        )
 
         # Test summary generation
         summary = dm2.get_all_routes_summary()
         self.assertIn("Stake.us", summary)
+        self.assertIn(Platform.GAMBA.value, summary)
         self.assertEqual(summary["Stake.us"]["channel_count"], 1)
         self.assertTrue(summary["Stake.us"]["webhook_configured"])
+
+        subscriber_id = "123456789012345678"
+        dm2.add_subscriber_channel(subscriber_id, Platform.GAMBA, 333333333333333333, "My Server / #gamba")
+        dm2.add_subscriber_webhook(
+            subscriber_id,
+            Platform.GAMBA,
+            "https://discord.com/api/webhooks/333/secret",
+            "My Server / Gamba Feed",
+        )
+        self.assertEqual(
+            dm2.get_subscriber_route_label(subscriber_id, "channels", Platform.GAMBA, 333333333333333333),
+            "My Server / #gamba",
+        )
+        self.assertEqual(
+            dm2.get_subscriber_route_label(
+                subscriber_id,
+                "webhooks",
+                Platform.GAMBA,
+                "https://discord.com/api/webhooks/333/secret",
+            ),
+            "My Server / Gamba Feed",
+        )
+        dm2.remove_subscriber_channel(subscriber_id, Platform.GAMBA, 333333333333333333)
+        dm2.remove_subscriber_webhook(
+            subscriber_id, Platform.GAMBA, "https://discord.com/api/webhooks/333/secret"
+        )
+        self.assertIsNone(
+            dm2.get_subscriber_route_label(subscriber_id, "channels", Platform.GAMBA, 333333333333333333)
+        )
+        self.assertIsNone(
+            dm2.get_subscriber_route_label(
+                subscriber_id,
+                "webhooks",
+                Platform.GAMBA,
+                "https://discord.com/api/webhooks/333/secret",
+            )
+        )
+
+    def test_dashboard_can_disable_environment_webhooks_per_route(self):
+        dm = DashboardManager(self.test_routes_file)
+        gamba_webhook = "https://discord.com/api/webhooks/444/gamba-secret"
+        default_webhook = "https://discord.com/api/webhooks/555/default-secret"
+        with patch("dashboard_manager.DISCORD_WEBHOOK_GAMBA", gamba_webhook), patch(
+            "dashboard_manager.DISCORD_WEBHOOK_URL", ""
+        ):
+            self.assertEqual(dm.get_webhooks(Platform.GAMBA), [gamba_webhook])
+            dm.remove_webhook(Platform.GAMBA, gamba_webhook)
+            self.assertEqual(dm.get_webhooks(Platform.GAMBA), [])
+            self.assertEqual(DashboardManager(self.test_routes_file).get_webhooks(Platform.GAMBA), [])
+
+        with patch("dashboard_manager.DISCORD_WEBHOOK_URL", default_webhook):
+            self.assertEqual(dm.get_webhooks(Platform.STAKE_US), [default_webhook])
+            dm.remove_webhook(Platform.STAKE_US, default_webhook)
+            self.assertEqual(dm.get_webhooks(Platform.STAKE_US), [])
+            self.assertEqual(dm.get_webhooks(Platform.STAKE_COM), [default_webhook])
+
+            reloaded = DashboardManager(self.test_routes_file)
+            self.assertEqual(reloaded.get_webhooks(Platform.GAMBA), [default_webhook])
+            self.assertEqual(reloaded.get_webhooks(Platform.STAKE_US), [])
+            self.assertEqual(reloaded.get_webhooks(Platform.STAKE_COM), [default_webhook])
 
     def test_discord_notifier_with_multi_routes(self):
         dm = DashboardManager(self.test_routes_file)
@@ -1046,10 +1265,27 @@ Redeem Here!"""
         self.assertFalse(manager.is_authorized(random_user_id))
         
         # Ensure that create_info_embed generates the public guide
-        from discord_bot import create_info_embed
+        from discord_bot import DashboardView, create_info_embed
         info_embed = create_info_embed()
         self.assertIsNotNone(info_embed)
-        self.assertIn("Information & Guide", info_embed.title)
+        self.assertIn("Information", info_embed.title)
+        self.assertIn("Faircodes", info_embed.description)
+        self.assertIn("only messages explicitly identified as GAMBA", info_embed.description)
+        info_fields = "\n".join(field.value for field in info_embed.fields)
+        self.assertIn("`/activecodes`", info_fields)
+        self.assertIn("`/activeus`", info_fields)
+        self.assertIn("`/activecom`", info_fields)
+
+        from discord_bot import _platform_select_options
+        primary_options, extra_options = _platform_select_options()
+        self.assertLessEqual(len(primary_options), 25)
+        self.assertLessEqual(len(extra_options), 25)
+        option_labels = {option.label for option in primary_options + extra_options}
+        self.assertEqual(
+            option_labels - {"Default"},
+            {platform.value for platform in Platform if platform != Platform.UNKNOWN},
+        )
+        self.assertIsNotNone(DashboardView(manager))
         
         # Ensure StakeStatsPoller live format is accessible to public callers
         poller = StakeStatsPoller()
