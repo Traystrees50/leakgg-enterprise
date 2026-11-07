@@ -24,7 +24,7 @@ from health_monitor import HealthMonitor
 from config import (
     COLOR_STAKE_COM, COLOR_STAKE_US, COLOR_SHUFFLE_COM, COLOR_SHUFFLE_US,
     COLOR_QZINO, COLOR_RAINBET, COLOR_DEGEN, COLOR_GOATED, COLOR_DUAL_STAKE,
-    AFFILIATE_SIGNUP_LINKS
+    AFFILIATE_SIGNUP_LINKS, OWNER_USER_ID,
 )
 
 class TestLeakedGGMonitoring(unittest.TestCase):
@@ -736,7 +736,7 @@ Enjoy your reload & weekly boost!"""
 
     def test_owner_and_subscriber_access_control(self):
         dm = DashboardManager(self.test_routes_file)
-        owner_id = 1051355279511519273
+        owner_id = OWNER_USER_ID
         random_user_id = 999888777666555444
 
         # Owner check
