@@ -348,7 +348,7 @@ Enjoy and good luck Degens! 🎰"""
 
         notifier = DiscordNotifier()
         embed = notifier.build_embed(item)
-        self.assertIn("DUAL STAKE", embed["title"])
+        self.assertIn("Stake.us & Stake.com", embed["title"])
         fields_text = " ".join([f["value"] for f in embed["fields"]])
         self.assertIn("Stake.us", fields_text)
         self.assertIn("Stake.com", fields_text)
@@ -484,6 +484,8 @@ Enjoy and good luck Degens! 🎰"""
         self.assertIn(Platform.GAMBA.value, summary)
         self.assertEqual(summary["Stake.us"]["channel_count"], 1)
         self.assertTrue(summary["Stake.us"]["webhook_configured"])
+        self.assertTrue(summary["Rainbet"]["channel_inherited"])
+        self.assertFalse(summary["Stake.us"]["channel_inherited"])
 
         subscriber_id = "123456789012345678"
         dm2.add_subscriber_channel(subscriber_id, Platform.GAMBA, 333333333333333333, "My Server / #gamba")
@@ -557,6 +559,120 @@ Enjoy and good luck Degens! 🎰"""
         chs = notifier.get_channels_for_platform(Platform.SHUFFLE_US)
         self.assertEqual(len(whs), 2)
         self.assertEqual(len(chs), 2)
+
+    def test_guild_routes_are_isolated_and_fan_out_only_to_configured_guilds(self):
+        manager = DashboardManager(self.test_routes_file)
+        from drop_analytics import DropAnalytics
+
+        analytics_temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(analytics_temp_dir.cleanup)
+        analytics = DropAnalytics(os.path.join(analytics_temp_dir.name, "analytics.db"))
+        analytics_patch = patch("drop_analytics.get_store", return_value=analytics)
+        analytics_patch.start()
+        self.addCleanup(analytics_patch.stop)
+        manager.add_channel(Platform.STAKE_US, 999)
+        manager.add_guild_channel(100, Platform.STAKE_US, 111, "Guild 100 / #drops")
+        manager.add_guild_channel(200, Platform.STAKE_US, 222, "Guild 200 / #codes")
+
+        self.assertEqual(manager.get_configured_guild_ids(), ["100", "200"])
+        self.assertEqual(manager.get_guild_channels(100, Platform.STAKE_US), [111])
+        self.assertEqual(manager.get_guild_channels(200, Platform.STAKE_US), [222])
+        self.assertEqual(manager.get_guild_channels(100, Platform.SHUFFLE_US), [])
+        self.assertEqual(
+            manager.get_guild_routes_summary(100)[Platform.STAKE_US.value]["channels_display"],
+            "• **Guild 100 / #drops** <#111> (`111`)",
+        )
+
+        item = BonusCodeItem(
+            code="GUILDROUTE",
+            platform=Platform.STAKE_US,
+            amount_value="$5",
+            wager_requirement="3x",
+            source_name="test",
+            source_url="https://example.com",
+            is_affiliate=False,
+        )
+        notifier = DiscordNotifier(dashboard_manager=manager)
+        with patch("discord_notifier.save_backup"), patch.object(
+            notifier, "_send_single_item_notification", return_value=True
+        ) as send:
+            self.assertTrue(notifier.send_notification(item))
+            self.assertEqual(
+                {tuple(call.args[2]) for call in send.call_args_list},
+                {(111,), (222,)},
+            )
+            send.reset_mock()
+            self.assertTrue(notifier.send_notification(item, guild_id=100))
+            self.assertEqual(len(send.call_args_list), 1)
+            self.assertEqual(send.call_args.args[2], [111])
+
+        reloaded = DashboardManager(self.test_routes_file)
+        self.assertEqual(reloaded.get_guild_channels(100, Platform.STAKE_US), [111])
+        self.assertEqual(reloaded.get_guild_channels(200, Platform.STAKE_US), [222])
+
+    def test_partial_guild_fanout_retries_failed_guild_without_duplicate_success(self):
+        manager = DashboardManager(self.test_routes_file)
+        manager.add_guild_channel(100, Platform.STAKE_US, 111, "Guild 100")
+        manager.add_guild_channel(200, Platform.STAKE_US, 222, "Guild 200")
+        from drop_analytics import DropAnalytics
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            analytics = DropAnalytics(os.path.join(temp_dir, "analytics.db"))
+            with patch("drop_analytics.get_store", return_value=analytics):
+                notifier = DiscordNotifier(dashboard_manager=manager)
+                item = BonusCodeItem(
+                    code="PARTIALGUILD",
+                    platform=Platform.STAKE_US,
+                    amount_value="$5",
+                    wager_requirement="3x",
+                    source_name="test",
+                    source_url="https://example.com",
+                    is_affiliate=False,
+                )
+                with patch("discord_notifier.save_backup"), patch.object(
+                    notifier,
+                    "_send_single_item_notification",
+                    side_effect=[True, False, True],
+                ) as send:
+                    self.assertFalse(notifier.send_notification(item))
+                    self.assertTrue(notifier.send_notification(item))
+                    self.assertEqual(send.call_count, 3)
+                    self.assertEqual(
+                        [call.args[2] for call in send.call_args_list],
+                        [[111], [222], [222]],
+                    )
+
+    def test_drop_analytics_persists_case_and_isolates_guild_reports(self):
+        from drop_analytics import DropAnalytics
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            analytics = DropAnalytics(os.path.join(temp_dir, "analytics.db"))
+            item = BonusCodeItem(
+                code="MiXeDCode42",
+                platform=Platform.STAKE_US,
+                amount_value="$5",
+                wager_requirement="3x",
+                source_name="@dropfeed",
+                source_url="https://example.com/drop",
+                is_affiliate=False,
+            )
+            analytics.record_drop(item, "ACTIVE")
+            analytics.record_drop(item, "UNKNOWN")
+            analytics.record_delivery(item, 100, True)
+            analytics.record_delivery(item, 200, False)
+
+            guild_stats = analytics.get_stats(guild_id=100)
+            other_guild_stats = analytics.get_stats(guild_id=200)
+            all_stats = analytics.get_stats()
+
+            self.assertEqual(guild_stats["total_drops"], 1)
+            self.assertEqual(guild_stats["recent_history"][0]["code"], "MiXeDCode42")
+            self.assertEqual(guild_stats["recent_history"][0]["availability_status"], "ACTIVE")
+            self.assertEqual(guild_stats["recent_history"][0]["sightings"], 2)
+            self.assertEqual(guild_stats["delivered_notifications"], 1)
+            self.assertEqual(other_guild_stats["total_drops"], 0)
+            self.assertEqual(other_guild_stats["failed_notifications"], 1)
+            self.assertEqual(all_stats["delivered_notifications"], 1)
 
     def test_health_monitor_engine(self):
         dm = DashboardManager(self.test_routes_file)
@@ -687,9 +803,10 @@ Join now and claim via https://qzino.ai/?r=SELFMADE"""
         embed = notifier.build_embed(item)
         self.assertEqual(embed.get("image", {}).get("url"), "https://cdn.telesco.pe/file/qzino_promo.jpg")
         field_values = " ".join([f["value"] for f in embed.get("fields", [])])
-        self.assertIn("[CLICK HERE TO CLAIM]", field_values)
-        self.assertIn("[SIGNUP HERE]", field_values)
-        self.assertIn("[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", field_values)
+        self.assertNotIn("[CLICK HERE TO CLAIM]", field_values)
+        self.assertNotIn("[SIGNUP HERE]", field_values)
+        components = DiscordNotifier.build_message_components(item)[0]["components"]
+        self.assertEqual([component["label"] for component in components], ["CLAIM", "SIGNUP"])
 
     def test_vip_events_routing_and_extraction(self):
         tg = TelegramScraper()
@@ -734,7 +851,7 @@ Enjoy your reload & weekly boost!"""
         embed_com = notifier.build_embed(item_com)
         self.assertEqual(embed_com.get("color"), Platform.STAKE_COM_VIP_NOTICES.embed_color)
 
-    def test_owner_and_subscriber_access_control(self):
+    def test_owner_and_authorized_user_access_control(self):
         dm = DashboardManager(self.test_routes_file)
         owner_id = OWNER_USER_ID
         random_user_id = 999888777666555444
@@ -743,23 +860,23 @@ Enjoy your reload & weekly boost!"""
         self.assertTrue(dm.is_owner(owner_id))
         self.assertTrue(dm.is_authorized(owner_id))
 
-        # Random user without subscription is unauthorized
+        # A user without a dashboard access grant is unauthorized.
         self.assertFalse(dm.is_owner(random_user_id))
         self.assertFalse(dm.is_authorized(random_user_id))
 
-        # Add $2 crypto subscriber
-        dm.add_subscriber(random_user_id, note="$2 LTC Payment Confirmed")
+        # Grant access without tying authorization to a purchase.
+        dm.add_subscriber(random_user_id, note="Dashboard access grant")
         self.assertTrue(dm.is_authorized(random_user_id))
         self.assertFalse(dm.is_owner(random_user_id))
 
-        # Remove subscriber
+        # Revoke the access grant.
         dm.remove_subscriber(random_user_id)
         self.assertFalse(dm.is_authorized(random_user_id))
 
         # Owner cannot be removed
         self.assertFalse(dm.remove_subscriber(owner_id))
 
-    def test_expired_subscribers_are_excluded_from_notification_fanout(self):
+    def test_expired_access_grants_are_excluded_from_notification_fanout(self):
         manager = DashboardManager(self.test_routes_file)
         manager.add_subscriber("1001", duration="7days")
         manager.config["subscribers"]["1001"]["expires_at"] = (
@@ -1161,12 +1278,11 @@ Redeem Here!"""
     def test_exact_embed_field_layout_order(self):
         """
         Validates the strict layout and ordering of Discord embed fields:
-        1. PLATFORM & SOURCE on the same line (inline: True, inline: True)
+        1. PLATFORM & SOURCE on the same line in one full-width event field
         2. CODE box on the next line (inline: False)
         3. VALUE, WAGER REQUIREMENTS, and CLAIMS LIMIT on the same line (inline: True x3)
-        4. DIRECT REDEEM LINK on the next line (inline: False)
-        5. SIGNUP link and JOIN DISCORD link on the same line (inline: True, inline: True)
-        6. Media/Image attached at the bottom (embed['image'])
+        4. Claim and signup actions are buttons, not extra embed fields
+        5. Media/Image attached at the bottom (embed['image'])
         """
         notifier = DiscordNotifier()
 
@@ -1184,53 +1300,138 @@ Redeem Here!"""
         embed = notifier.build_embed(item)
         fields = embed["fields"]
 
-        # Field 0: Platform (inline)
-        self.assertEqual(fields[0]["name"], "🎰 Platform")
-        self.assertTrue(fields[0]["inline"])
-        self.assertIn("Stake.us", fields[0]["value"])
+        self.assertEqual(embed["title"], "🎁 Stake.us — Bonus Code")
+        self.assertNotIn("DETECTED", embed["title"])
 
-        # Field 1: Source (inline)
-        self.assertEqual(fields[1]["name"], "🌐 Source")
-        self.assertTrue(fields[1]["inline"])
-        self.assertIn("@dailybonuscodeUS", fields[1]["value"])
+        # Field 0: Platform and source share one line
+        self.assertEqual(fields[0]["name"], "Event")
+        self.assertFalse(fields[0]["inline"])
+        self.assertIn("Stake.us", fields[0]["value"])
+        self.assertIn("@dailybonuscodeUS", fields[0]["value"])
 
         # Field 2: Bonus Code (full width)
-        self.assertEqual(fields[2]["name"], "🎁 Bonus Code (Tap to Copy)")
-        self.assertFalse(fields[2]["inline"])
-        self.assertIn("ORDERTEST2026", fields[2]["value"])
+        self.assertEqual(fields[1]["name"], "🎁 Bonus code")
+        self.assertFalse(fields[1]["inline"])
+        self.assertIn("ORDERTEST2026", fields[1]["value"])
 
         # Field 3: Value (inline)
-        self.assertEqual(fields[3]["name"], "💰 Value / Amount")
-        self.assertTrue(fields[3]["inline"])
-        self.assertIn("5 SC", fields[3]["value"])
+        self.assertEqual(fields[2]["name"], "💰 Value")
+        self.assertTrue(fields[2]["inline"])
+        self.assertIn("5 SC", fields[2]["value"])
 
         # Field 4: Wager (inline)
-        self.assertEqual(fields[4]["name"], "🔄 Wager Required")
-        self.assertTrue(fields[4]["inline"])
-        self.assertIn("10,000 SC", fields[4]["value"])
+        self.assertEqual(fields[3]["name"], "🔄 Wager")
+        self.assertTrue(fields[3]["inline"])
+        self.assertIn("10,000 SC", fields[3]["value"])
 
         # Field 5: Claims (inline)
-        self.assertEqual(fields[5]["name"], "👥 Claims / Limit")
-        self.assertTrue(fields[5]["inline"])
-        self.assertIn("5,000 SC limit", fields[5]["value"])
+        self.assertEqual(fields[4]["name"], "👥 Claims")
+        self.assertTrue(fields[4]["inline"])
+        self.assertIn("5,000 SC limit", fields[4]["value"])
 
-        # Field 6: Direct Redeem Link (full width)
-        self.assertEqual(fields[6]["name"], "🔗 Direct Redeem Link")
-        self.assertFalse(fields[6]["inline"])
-        self.assertIn("[CLICK HERE TO CLAIM]", fields[6]["value"])
-
-        # Field 7: Signup Link (inline)
-        self.assertEqual(fields[7]["name"], "📝 Direct Signup Link")
-        self.assertTrue(fields[7]["inline"])
-        self.assertIn("[SIGNUP HERE]", fields[7]["value"])
-
-        # Field 8: Join Discord (inline)
-        self.assertEqual(fields[8]["name"], "💬 Official Community")
-        self.assertTrue(fields[8]["inline"])
-        self.assertIn("[JOIN DISCORD]", fields[8]["value"])
+        self.assertEqual(len(fields), 5)
+        self.assertEqual(embed["thumbnail"]["url"], Platform.STAKE_US.logo_url)
 
         # Image at the bottom
         self.assertEqual(embed["image"]["url"], "https://example.com/promo.png")
+
+    def test_platform_logo_is_used_as_thumbnail_when_embed_has_no_image(self):
+        notifier = DiscordNotifier()
+        item = BonusCodeItem(
+            code="LOGOTEST",
+            platform=Platform.QZINO,
+            amount_value="$5",
+            wager_requirement="3x",
+            source_name="Qzino",
+            source_url="https://qzino.ai",
+        )
+
+        embed = notifier.build_embed(item)
+
+        self.assertEqual(embed["thumbnail"]["url"], Platform.QZINO.logo_url)
+        self.assertNotIn("image", embed)
+        self.assertIn("• 🌐", embed["fields"][0]["value"])
+
+    def test_drop_button_row_contains_only_claim_and_signup(self):
+        item = BonusCodeItem(
+            code="BUTTONTEST",
+            platform=Platform.STAKE_US,
+            amount_value="$5",
+            wager_requirement="3x",
+            source_url="https://example.com/source",
+            source_name="Test source",
+        )
+
+        payload_buttons = DiscordNotifier.build_message_components(item)[0]["components"]
+        self.assertEqual([button["label"] for button in payload_buttons], ["CLAIM", "SIGNUP"])
+        self.assertEqual(payload_buttons[0]["url"], item.redeem_link)
+        self.assertEqual(payload_buttons[1]["url"], item.affiliate_signup_link)
+
+        view_buttons = DiscordNotifier.build_link_view(item).children
+        self.assertEqual([button.label for button in view_buttons], ["CLAIM", "SIGNUP"])
+
+    def test_webhook_drop_payload_has_only_claim_and_signup_buttons(self):
+        notifier = DiscordNotifier()
+        item = BonusCodeItem(
+            code="WEBHOOKBUTTONS",
+            platform=Platform.QZINO,
+            amount_value="$5",
+            wager_requirement="3x",
+            source_url="https://example.com/source",
+            source_name="Test source",
+        )
+        response = MagicMock(status_code=204)
+
+        with patch("discord_notifier.requests.post", return_value=response) as post:
+            self.assertTrue(notifier._send_single_item_notification(item, ["https://example.com/hook"], []))
+
+        payload = json.loads(post.call_args.kwargs["data"])
+        buttons = payload["components"][0]["components"]
+        self.assertEqual([button["label"] for button in buttons], ["CLAIM", "SIGNUP"])
+
+    def test_failed_notification_is_not_marked_seen_and_is_retried(self):
+        tracker = CodeTracker(self.test_state_file)
+        notifier = MagicMock()
+        notifier.send_notification.side_effect = [False, True]
+        engine = ScraperEngine(tracker=tracker, notifier=notifier)
+        item = BonusCodeItem(
+            code="RETRYME",
+            platform=Platform.QZINO,
+            amount_value="$5",
+            wager_requirement="3x",
+            source_url="https://example.com/retry",
+            source_name="Test source",
+            is_affiliate=False,
+        )
+
+        self.assertEqual(engine.process_items([item], notify=True), [])
+        self.assertFalse(tracker.is_item_seen(item))
+        self.assertEqual(engine.process_items([item], notify=True), [item])
+        self.assertTrue(tracker.is_item_seen(item))
+
+    def test_embed_editor_test_uses_selected_platform_routes(self):
+        from discord_bot import post_test_embed
+
+        route_url = "https://discord.com/api/webhooks/123456/test-route"
+        manager = DashboardManager(self.test_routes_file)
+        manager.get_webhooks = MagicMock(return_value=[route_url])
+        manager.get_channels = MagicMock(return_value=[])
+        template = {"title": "Test", "description": "Test preview", "color": "#123456", "fields": []}
+        response = MagicMock(status_code=204)
+
+        with patch("requests.post", return_value=response) as post:
+            success, message = asyncio.run(
+                post_test_embed(None, template, Platform.STAKE_US.value, manager)
+            )
+
+        self.assertTrue(success, message)
+        self.assertIn("all 1 configured", message)
+        self.assertEqual(post.call_args.args[0], route_url)
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(
+            [button["label"] for button in payload["components"][0]["components"]],
+            ["CLAIM", "SIGNUP"],
+        )
 
     def test_concurrent_scraper_engine_execution(self):
         """
@@ -2666,8 +2867,17 @@ Period: July 4 → July 11"""
         code3 = client.extract_code("Claim Amount: $5.00 Wager: $4,000 Claims: 150")
         self.assertIsNone(code3)
 
-        client_no_key = OCRClient(api_key=None)
-        self.assertFalse(client_no_key.is_available)
+        client_no_key = OCRClient(api_key="")
+        self.assertEqual(client_no_key.is_available, bool(client_no_key._load_local_engine()))
+
+    def test_ocr_uses_local_engine_without_api_key(self):
+        from scrapers.ocr import OCRClient
+
+        client = OCRClient(api_key="")
+        client.session.post = MagicMock(side_effect=AssertionError("OCR.space should not be called"))
+        with patch.object(client, "_run_local_ocr", return_value="Bonus Code: FREELOCAL123"):
+            self.assertEqual(client.ocr_code_from_bytes(b"image bytes"), "FREELOCAL123")
+        client.session.post.assert_not_called()
 
     def test_resolve_placeholder_code_with_mock_ocr(self):
         from bonus_code_detector import resolve_placeholder_code
@@ -2736,6 +2946,8 @@ Period: July 4 → July 11"""
     def test_resolve_placeholder_code_no_ocr_key(self):
         from bonus_code_detector import resolve_placeholder_code
 
+        mock_client = MagicMock()
+        mock_client.is_available = False
         item = BonusCodeItem(
             code="CHECK_IMAGE_FOR_CODE_#49",
             platform=Platform.DEGEN,
@@ -2747,7 +2959,7 @@ Period: July 4 → July 11"""
             image_url="https://cdn4.telesco.pe/file/pHHR6Eb.jpg",
         )
 
-        resolved = resolve_placeholder_code(item)
+        resolved = resolve_placeholder_code(item, ocr_client=mock_client)
         self.assertEqual(resolved.code, "CHECK_IMAGE_FOR_CODE_#49")
 
     def test_resolve_placeholder_code_from_bytes(self):

@@ -39,9 +39,26 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 
 - **Enterprise Interactive Dashboard (`/dashboard` & `!dashboard`)**:
   - Full Discord UI control panel with platform selectors covering every supported platform and a separate Default route.
-  - Configure multiple channel IDs and webhook URLs per platform; each destination has a human-readable label.
-  - Add/remove labeled channels and webhooks, fast-bind the current channel, and dispatch instant test embeds.
+  - Each Discord server independently configures multiple channel IDs and webhook URLs per platform; each destination has a human-readable label.
+  - Add/remove labeled channels and webhooks, fast-bind the current channel, and dispatch test embeds to that platform's configured routes.
+  - Source feeds and scanning remain shared bot-wide; route settings and notification destinations are isolated per server.
   - Live toggles for Real-time background sweep daemon and interval adjustment.
+
+- **Guild Drop Analytics and History**:
+  - `/stats [days]` reports recorded drops by platform and source, peak drop hour, reported reward values, and notification delivery attempts for the current server.
+  - `/history` shows recent drops from the last 36 hours, including source, platform, and reported value.
+  - Drop and delivery history is stored locally in `drop_analytics.db`; Supabase is not required for these reports.
+
+- **Free Image-Code OCR**:
+  - Placeholder codes in image-based Telegram events are processed with the included local RapidOCR engine.
+  - OCR runs on the bot host without an external OCR API key. OCR.space remains an optional fallback when `OCR_SPACE_API_KEY` is configured.
+  - Images larger than 10 MB are skipped for OCR.
+
+- **Readable Drop Alerts**:
+  - Platform-colored embeds use cleaner titles, official platform-logo thumbnails, and a single event line for platform and source; supplied event images remain prominent.
+  - Embed text and emoji are sent as UTF-8 so Discord renders them consistently.
+  - Every drop notification has exactly two link buttons: **CLAIM** and **SIGNUP**.
+  - Failed or unrouted notifications remain eligible for retry instead of being marked seen prematurely.
 
 - **Enterprise Health Monitor (`/dashboard` Health Button)**:
   - Live system diagnostic dashboard tracking Uptime, Process Memory RSS (MB), OS, and PID.
@@ -96,11 +113,12 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 
 | Command | Access | Type | Description |
 |---|---|---|---|
-| `/subscribe` / `!subscribe` | 🌐 Public | Hybrid | Subscribe for $2 in crypto to unlock full premium dashboard access in any server. |
 | `/activecodes` / `!activecodes` | 🌐 Public | Hybrid | Shows all active Stake.us and Stake.com codes from StakeStats.net. |
 | `/activeus` / `!activeus` | 🌐 Public | Hybrid | Shows only active Stake.us codes. |
 | `/activecom` / `!activecom` | 🌐 Public | Hybrid | Shows only active Stake.com codes. |
 | `/codes [platform]` / `!codes [platform]` | 🌐 Public | Hybrid | Queries active codes, optionally filtered to a platform. |
+| `/stats [days]` / `!stats [days]` | 🌐 Public | Hybrid | Shows drop analytics for the current server (1–365 days; defaults to 7). |
+| `/history` / `!history` | 🌐 Public | Hybrid | Shows the latest drops from the last 36 hours for the current server. |
 | `/links` / `!links` | 🌐 Public | Hybrid | Displays all affiliate/signup links for every supported platform plus Discord and Kick. |
 | `!code` | 🌐 Public | Prefix | Manually submit a bonus code for validation and broadcast. Usage: `!code <platform> <code>` or `!code <code>`. |
 | `!post` | 🔒 Owner / Admin / Subscriber | Prefix | Manually broadcast a raw event/post to selected platform channels. Usage: `!post <platform> <message>`. |
@@ -108,12 +126,12 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 | `/info` / `!info` | 🌐 Public | Hybrid | Displays bot overview, supported platforms, theme palette, and quick command overview. |
 | `/commands` / `!commands` | 🌐 Public | Hybrid | Lists all currently available commands with descriptions and affiliate links. |
 | `/help` / `!help` | 🌐 Public | Hybrid | Displays comprehensive bot guide, usage instructions, and platform registration links. |
-| `/dashboard` / `!dashboard` | 🔒 Owner / Admin / Subscriber | Hybrid | Opens the interactive enterprise control panel with platform & action dropdown menus. |
+| `/dashboard` / `!dashboard` | 🔒 Server Admin / Owner / Authorized User | Hybrid | Opens the interactive control panel for platform routes and event destinations. |
 | `/startmonitor` / `!startmonitor` | 🔒 Owner / Admin / Subscriber | Hybrid | Starts background real-time monitoring sweeps across all sources. |
 
 > **Access Levels:**
 > - 🌐 **Public** — Available to all users and server members.
-> - 🔒 **Owner / Admin / Subscriber** — Restricted to the project owner (`traystrees50`), server administrators, users with an `@admin` role, and active $2 crypto subscribers.
+> - 🔒 **Server Admin / Owner / Authorized User** — Dashboard access is available to server administrators, users with an `@admin` role, users granted access by the owner, and the project owner.
 
 ---
 
@@ -123,6 +141,7 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 |---|---|
 | `python main.py run` | Starts the daemon background monitoring loop. |
 | `python main.py health` | Runs the enterprise health monitor diagnostic check in CLI. |
+| `python main.py stats` | Prints local drop, source, peak-hour, and notification delivery analytics. |
 | `python main.py poll-stakestats` | Real-time query against `stakestats.net` showing active US & COM drops. |
 | `python main.py poll-telegram` | Scrapes all monitored Telegram drop channels. |
 | `python main.py check-once` | Single scan across all sources (StakeStats, Telegram, CodeStats, Web). |

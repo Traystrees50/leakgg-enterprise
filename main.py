@@ -496,36 +496,35 @@ def cmd_history(limit: int = 25):
         print("-" * 80)
 
 def cmd_stats():
-    """Print analytics: platform breakdown, source leaderboard, hourly heatmap."""
-    import db_manager
-    stats = db_manager.get_stats()
+    """Print local drop and delivery analytics without requiring Supabase."""
+    from drop_analytics import get_store
+    stats = get_store().get_stats()
     if stats["total_drops"] == 0:
-        print("\nNo drops recorded yet. Run `python main.py watch --once` to start collecting data.\n")
+        print("\nNo drops recorded yet. Run `python main.py check-once` to collect a scan.\n")
         return
 
     print("\n" + "=" * 80)
-    print(f" 📊 LEAKED.GG DROP ANALYTICS — {stats['total_drops']} total drops recorded")
+    print(f" LEAKED.GG DROP ANALYTICS — {stats['total_drops']} drops in the last {stats['period_days']} days")
     print("=" * 80)
 
-    print("\n--- 🎰 Drops by Platform ---")
+    print("\n--- Drops by Platform ---")
     for platform, count in stats["platform_breakdown"]:
-        bar = "█" * min(count, 40)
+        bar = "#" * min(count, 40)
         print(f" • {platform:25s} {count:4d}  {bar}")
 
-    print("\n--- 📡 Source Leaderboard (Top 10) ---")
+    print("\n--- Source Leaderboard (Top 10) ---")
     for source, count in stats["source_leaderboard"]:
         print(f" • {source:25s} {count:4d}")
 
-    print("\n--- ⏰ Hourly Drop Heatmap ---")
+    print("\n--- Peak Drop Hour (UTC) ---")
     heatmap = stats["hourly_heatmap"]
     if heatmap:
-        max_count = max(heatmap.values()) if heatmap else 1
-        for hour in sorted(heatmap.keys()):
-            count = heatmap[hour]
-            bar = "▓" * int((count / max_count) * 30) if max_count > 0 else ""
-            print(f" • {hour}  {count:3d}  {bar}")
+        hour, count = max(heatmap.items(), key=lambda row: row[1])
+        print(f" • {hour}: {count} drops")
     else:
         print(" (no timestamp data available)")
+    print(f"\nDelivered notifications: {stats['delivered_notifications']}")
+    print(f"Failed delivery attempts: {stats['failed_notifications']}")
     print("=" * 80 + "\n")
 
 def cmd_check_codes(codes: List[str]):

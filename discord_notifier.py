@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import requests
 from typing import Optional, Dict, Any, List
 from models import BonusCodeItem, Platform
-from config import BOT_NAME, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES, DISCORD_INVITE_URL
+from config import BOT_NAME, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES
 from dashboard_manager import DashboardManager
 
 logger = logging.getLogger(__name__)
@@ -87,118 +87,104 @@ class DiscordNotifier:
     def get_channels_for_platform(self, platform: Platform) -> List[int]:
         return self.dashboard_manager.get_channels(platform)
 
+    @staticmethod
+    def _record_delivery(item: BonusCodeItem, guild_id: Optional[int], delivered: bool) -> None:
+        if guild_id is None:
+            return
+        try:
+            from drop_analytics import get_store
+            get_store().record_delivery(item, guild_id, delivered)
+        except Exception as exc:
+            logger.warning(f"Could not record delivery analytics for guild {guild_id}: {exc}")
+
+    @staticmethod
+    def _already_delivered_to_guild(item: BonusCodeItem, guild_id: int) -> bool:
+        try:
+            from drop_analytics import get_store
+            return get_store().has_successful_delivery(item, guild_id)
+        except Exception as exc:
+            logger.warning(f"Could not check delivery history for guild {guild_id}: {exc}")
+            return False
+
+    @staticmethod
+    def build_message_components(item: BonusCodeItem) -> List[Dict[str, Any]]:
+        return [{
+            "type": 1,
+            "components": [
+                {"type": 2, "style": 5, "label": "CLAIM", "url": item.redeem_link},
+                {"type": 2, "style": 5, "label": "SIGNUP", "url": item.affiliate_signup_link},
+            ],
+        }]
+
+    @staticmethod
+    def build_link_view(item: BonusCodeItem):
+        import discord
+
+        view = discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(
+            label="CLAIM",
+            style=discord.ButtonStyle.link,
+            url=item.redeem_link,
+        ))
+        view.add_item(discord.ui.Button(
+            label="SIGNUP",
+            style=discord.ButtonStyle.link,
+            url=item.affiliate_signup_link,
+        ))
+        return view
+
     def build_embed(self, item: BonusCodeItem) -> Dict[str, Any]:
         """
-        Builds a high-visibility Discord embed branded to Leaked.GG Code Monitoring.
-        Structured in the exact field order:
-        1. PLATFORM & SOURCE on the same line (inline)
-        2. CODE box on the next line (full width)
-        3. VALUE, WAGER REQUIREMENTS, and CLAIMS LIMIT all on the same line (inline)
-        4. DIRECT REDEEM LINK on the next line (full width)
-        5. SIGNUP link and JOIN DISCORD link on the same line (inline)
-        6. Media/Image attached last at the bottom
+        Builds a readable, platform-colored drop embed. Claim and signup actions
+        are attached as the only message buttons by the delivery methods.
         """
-        platform_name = item.platform.value.upper()
         emoji = item.platform.emoji
         color = item.platform.embed_color
+        title = item.notification_title
 
-        # Dynamic title based on event type
-        if item.is_highroller:
-            title = f"🔥 HIGHROLLER CODE DETECTED: {item.platform.value} {emoji}"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            title = f"👑 VIP NOTICE: {item.platform.value} {emoji}"
-        elif item.event_type == "WEEKLY BOOST":
-            title = f"🎉 WEEKLY BOOST DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "MONTHLY BONUS":
-            title = f"💰 MONTHLY BONUS DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "VIP EVENT":
-            title = f"👑 VIP EVENT DETECTED: {item.platform.value} {emoji}"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            title = f"🚨 NEW DUAL STAKE CODE DETECTED (US & COM) {emoji}"
-        elif item.platform != Platform.UNKNOWN:
-            title = f"🚨 NEW {platform_name} CODE DETECTED {emoji}"
-        else:
-            title = "🚨 NEW PLATFORM CODE DETECTED 🎁"
-
-        # 1. Line 1: PLATFORM & SOURCE on the same line
         source_display = f"[{item.source_name}]({item.source_url})" if item.source_url else f"`{item.source_name}`"
         if item.platform.value in PLATFORM_SOURCE_OVERRIDES:
             override_name, override_url = PLATFORM_SOURCE_OVERRIDES[item.platform.value]
             source_display = f"[{override_name}]({override_url})"
         fields = [
             {
-                "name": "🎰 Platform",
-                "value": f"`{item.platform.value}` {emoji}",
-                "inline": True
+                "name": "Event",
+                "value": f"{emoji} **{item.platform.value}** • 🌐 {source_display}",
+                "inline": False
             },
             {
-                "name": "🌐 Source",
-                "value": source_display,
-                "inline": True
-            },
-            # 2. Line 2: CODE goes on this line afterwards
-            {
-                "name": "🎁 Bonus Code (Tap to Copy)",
+                "name": "🎁 Bonus code",
                 "value": f"```{item.clean_code}```",
                 "inline": False
             },
-            # 3. Line 3: VALUE, REQUIREMENTS, and CLAIMS all on the same line
             {
-                "name": "💰 Value / Amount",
+                "name": "💰 Value",
                 "value": f"**{item.amount_value or 'Exclusive Offer'}**",
                 "inline": True
             },
             {
-                "name": "🔄 Wager Required",
+                "name": "🔄 Wager",
                 "value": f"**{item.wager_requirement or 'None / 0x'}**",
                 "inline": True
             },
             {
-                "name": "👥 Claims / Limit",
+                "name": "👥 Claims",
                 "value": f"**{item.claims_count or 'Unlimited / Open'}**",
                 "inline": True
             }
         ]
 
-        # 4. Line 4: DIRECT REDEEM LINK on this line
+        # A combined Stake alert has two redeem destinations; keep both visible
+        # while the single Claim button targets the default Stake.us redeem URL.
         if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
             fields.append({
-                "name": "🔗 Direct Redeem Links (Dual Platform)",
+                "name": "🔗 Claim on either Stake site",
                 "value": (
-                    f"🇺🇸 **Stake.us:** [CLICK HERE TO CLAIM]({item.redeem_link_us})\n"
-                    f"🌏 **Stake.com:** [CLICK HERE TO CLAIM]({item.redeem_link_com})"
+                    f"🇺🇸 **Stake.us:** [Open redeem page]({item.redeem_link_us})\n"
+                    f"🌍 **Stake.com:** [Open redeem page]({item.redeem_link_com})"
                 ),
                 "inline": False
             })
-        else:
-            redeem_url = item.redeem_link
-            fields.append({
-                "name": "🔗 Direct Redeem Link",
-                "value": f"[CLICK HERE TO CLAIM]({redeem_url})",
-                "inline": False
-            })
-
-        # 5. Line 5: SIGNUP link, JOIN DISCORD link, and WATCH ON KICK on the same line
-        signup_url = item.affiliate_signup_link
-        kick_url = get_kick_url_for_platform(item.platform.value)
-        kick_label = get_kick_label_for_platform(item.platform.value)
-        fields.extend([
-            {
-                "name": "📝 Direct Signup Link",
-                "value": f"[SIGNUP HERE]({signup_url})",
-                "inline": True
-            },
-            {
-                "name": "💬 Official Community",
-                "value": f"[JOIN DISCORD]({DISCORD_INVITE_URL})",
-                "inline": True
-            },
-            {
-                "name": kick_label,
-                "value": f"[WATCH ON KICK]({kick_url})",
-                "inline": True
-            }
-        ])
 
         # Clean, modern embed description without raw telegram text duplication
         if item.is_highroller:
@@ -224,6 +210,9 @@ class DiscordNotifier:
             }
         }
 
+        if item.platform.logo_url:
+            embed["thumbnail"] = {"url": item.platform.logo_url}
+
         # 6. Media / image goes last
         if item.image_url:
             embed["image"] = {"url": item.image_url}
@@ -234,7 +223,10 @@ class DiscordNotifier:
         embed_dict = self.build_embed(item)
         role_tag = item.platform.role_tag
         # Webhook payload: exclude role tags for Rainbet (clean posts without @ mentions)
-        webhook_payload = {"embeds": [embed_dict]}
+        webhook_payload = {
+            "embeds": [embed_dict],
+            "components": self.build_message_components(item),
+        }
         if role_tag and item.platform != Platform.RAINBET:
             webhook_payload["content"] = role_tag
 
@@ -249,20 +241,20 @@ class DiscordNotifier:
                     timeout=10
                 )
                 if resp.status_code in [200, 204]:
-                    logger.info(f"Successfully dispatched Discord embed for {item.platform.value} code '{item.code}' to webhook: {wh[:35]}...")
+                    logger.info(f"Successfully dispatched Discord embed for {item.platform.value} code '{item.code}' to a configured webhook.")
                     success = True
                 else:
-                    logger.error(f"Failed to send Discord webhook. HTTP {resp.status_code}: {resp.text}")
+                    logger.error(f"Failed to send Discord webhook for {item.platform.value}. HTTP {resp.status_code}.")
             except Exception as e:
-                logger.error(f"Exception while sending Discord webhook: {e}")
+                logger.error(f"Exception while sending Discord webhook for {item.platform.value}: {type(e).__name__}")
 
         # 2. If bot client is connected and channels are configured, post to all direct channels
         if self.bot_client is not None:
             try:
                 unique_channels = list(dict.fromkeys([int(c) for c in target_channels if c]))
                 for cid in unique_channels:
-                    self._dispatch_to_channel(cid, embed_dict, item)
-                    success = True
+                    if self._dispatch_to_channel(cid, embed_dict, item):
+                        success = True
             except Exception as e:
                 logger.warning(f"Direct channel dispatch error: {e}")
 
@@ -279,7 +271,13 @@ class DiscordNotifier:
             return False
         return self._send_single_item_notification(item, sub_webhooks, sub_channels)
 
-    def send_notification(self, item: BonusCodeItem, custom_webhook: Optional[str] = None, subscriber_uid: Optional[str] = None) -> bool:
+    def send_notification(
+        self,
+        item: BonusCodeItem,
+        custom_webhook: Optional[str] = None,
+        subscriber_uid: Optional[str] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
         """
         Sends the bonus code embed to Discord across all configured webhooks
         and direct bot text channels for the platform(s).
@@ -300,15 +298,40 @@ class DiscordNotifier:
                 return sent
             return self._send_subscriber_notification(item, subscriber_uid)
 
+        if guild_id is None:
+            configured_guild_ids = self.dashboard_manager.get_configured_guild_ids()
+            if configured_guild_ids:
+                outcomes = []
+                for configured_guild_id in configured_guild_ids:
+                    configured_guild_id = int(configured_guild_id)
+                    if self._already_delivered_to_guild(item, configured_guild_id):
+                        outcomes.append(True)
+                    else:
+                        outcomes.append(
+                            self.send_notification(item, guild_id=configured_guild_id)
+                        )
+                return bool(outcomes) and all(outcomes)
+
+        get_webhooks = (
+            lambda platform: self.dashboard_manager.get_guild_webhooks(guild_id, platform)
+            if guild_id is not None
+            else self.dashboard_manager.get_webhooks(platform)
+        )
+        get_channels = (
+            lambda platform: self.dashboard_manager.get_guild_channels(guild_id, platform)
+            if guild_id is not None
+            else self.dashboard_manager.get_channels(platform)
+        )
+
         if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
             us_item = item.to_stake_us_item()
             com_item = item.to_stake_com_item()
 
-            us_webhooks = set(self.dashboard_manager.get_webhooks(Platform.STAKE_US))
-            us_channels = set(self.dashboard_manager.get_channels(Platform.STAKE_US))
+            us_webhooks = set(get_webhooks(Platform.STAKE_US))
+            us_channels = set(get_channels(Platform.STAKE_US))
 
-            com_webhooks = set(self.dashboard_manager.get_webhooks(Platform.STAKE_COM))
-            com_channels = set(self.dashboard_manager.get_channels(Platform.STAKE_COM))
+            com_webhooks = set(get_webhooks(Platform.STAKE_COM))
+            com_channels = set(get_channels(Platform.STAKE_COM))
 
             # Destinations configured for BOTH platforms (or fallback to Default if neither configured)
             shared_webhooks = list(us_webhooks.intersection(com_webhooks))
@@ -322,15 +345,17 @@ class DiscordNotifier:
 
             # Check if neither platform is configured -> fallback to Default routes ONCE (combined card)
             if not us_webhooks and not us_channels and not com_webhooks and not com_channels:
-                def_webhooks = self.dashboard_manager.get_webhooks("Default")
-                if self.default_webhook_url and self.default_webhook_url not in def_webhooks:
+                def_webhooks = get_webhooks("Default")
+                if guild_id is None and self.default_webhook_url and self.default_webhook_url not in def_webhooks:
                     def_webhooks.append(self.default_webhook_url)
-                def_channels = self.dashboard_manager.get_channels("Default")
+                def_channels = get_channels("Default")
                 success = self._send_single_item_notification(item, def_webhooks, def_channels)
                 save_backup("post", "Dual Stake", item.code, f"value={item.amount_value} wager={item.wager_requirement}")
-                for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
-                    success = self._send_subscriber_notification(us_item, sub_uid) or success
-                    success = self._send_subscriber_notification(com_item, sub_uid) or success
+                if guild_id is None:
+                    for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
+                        success = self._send_subscriber_notification(us_item, sub_uid) or success
+                        success = self._send_subscriber_notification(com_item, sub_uid) or success
+                self._record_delivery(item, guild_id, success)
                 return success
 
             success = False
@@ -349,20 +374,22 @@ class DiscordNotifier:
                 s_com = self._send_single_item_notification(com_item, exclusive_com_webhooks, exclusive_com_channels)
                 success = success or s_com
 
-            for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
-                success = self._send_subscriber_notification(us_item, sub_uid) or success
-                success = self._send_subscriber_notification(com_item, sub_uid) or success
+            if guild_id is None:
+                for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
+                    success = self._send_subscriber_notification(us_item, sub_uid) or success
+                    success = self._send_subscriber_notification(com_item, sub_uid) or success
+            self._record_delivery(item, guild_id, success)
             return success
 
         # Standard single platform dispatch
-        target_webhooks = self.dashboard_manager.get_webhooks(item.platform)
-        if not target_webhooks and self.default_webhook_url:
+        target_webhooks = get_webhooks(item.platform)
+        if guild_id is None and not target_webhooks and self.default_webhook_url:
             target_webhooks.append(self.default_webhook_url)
-        target_channels = self.dashboard_manager.get_channels(item.platform)
+        target_channels = get_channels(item.platform)
         if not target_channels and not target_webhooks:
-            target_channels = self.dashboard_manager.get_channels("Default")
-            target_webhooks = self.dashboard_manager.get_webhooks("Default")
-            if self.default_webhook_url and self.default_webhook_url not in target_webhooks:
+            target_channels = get_channels("Default")
+            target_webhooks = get_webhooks("Default")
+            if guild_id is None and self.default_webhook_url and self.default_webhook_url not in target_webhooks:
                 target_webhooks.append(self.default_webhook_url)
 
         success = self._send_single_item_notification(item, target_webhooks, target_channels)
@@ -371,19 +398,21 @@ class DiscordNotifier:
         save_backup("post", item.platform.value, item.code, f"value={item.amount_value} wager={item.wager_requirement}")
 
         # Dispatch to all active subscribers' personal channel/webhook routes (non-owner only)
-        for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
-            success = self._send_subscriber_notification(item, sub_uid) or success
+        if guild_id is None:
+            for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
+                success = self._send_subscriber_notification(item, sub_uid) or success
 
+        self._record_delivery(item, guild_id, success)
         return success
 
     def _dispatch_to_channel(self, channel_id: int, embed_dict: Dict[str, Any], item: BonusCodeItem):
         """
         Safely dispatches an embed to a Discord text channel using client cache or API fetch.
-        Handles both thread-pool execution and event loop coroutine scheduling.
-        Includes persistent interactive buttons (Claim URL + Code Checker) when bot_client is available.
+        Waits for completion from worker threads and schedules safely when called
+        from the bot's own event loop.
         """
         if not self.bot_client or self.bot_client.is_closed():
-            return
+            return False
 
         import asyncio
         import discord
@@ -399,75 +428,29 @@ class DiscordNotifier:
                         )
                     except asyncio.TimeoutError:
                         logger.warning(f"Timeout fetching Discord channel ID {channel_id}")
-                        return
+                        return False
                     except Exception as fe:
                         logger.warning(f"Could not fetch Discord channel ID {channel_id}: {fe}")
-                        return
+                        return False
                 if channel is not None:
                     role_tag = item.platform.role_tag
                     embed = discord.Embed.from_dict(embed_dict)
 
-                    # Build interactive view with Claim URL + Code Checker buttons
-                    view = None
-                    try:
-                        redeem_url = item.redeem_link
-                        code_str = item.clean_code
-                        platform_name = item.platform.value
-
-                        class _BonusDropView(discord.ui.View):
-                            def __init__(self):
-                                super().__init__(timeout=0)
-
-                            @discord.ui.button(label="🔎 Code Checker", style=discord.ButtonStyle.secondary)
-                            async def _code_checker_button(self, interaction: discord.Interaction):
-                                try:
-                                    from scrapers.validator import StakeCodeValidator
-                                    validator = StakeCodeValidator()
-                                    result = validator.validate(code_str, item.platform)
-                                    status = result.get("status", "UNKNOWN")
-                                    bonus_val = result.get("bonusValue", "N/A")
-                                    wager = result.get("wagerRequirement", "N/A")
-                                    claims = result.get("claimsRemaining", "N/A")
-
-                                    status_emoji = {"ACTIVE": "🟢", "FULLY_CLAIMED": "🔴", "EXPIRED": "⏰", "INVALID": "❌"}.get(status, "🟡")
-                                    checker_embed = discord.Embed(
-                                        title=f"🔎 Code Checker — {platform_name}",
-                                        description=f"**Code:** `{code_str}`\n**Status:** {status_emoji} {status}",
-                                        color=item.platform.embed_color,
-                                    )
-                                    checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
-                                    checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
-                                    checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
-                                    checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE]({redeem_url})", inline=False)
-                                    checker_embed.set_footer(text=f"{BOT_NAME} • Code Checker")
-                                    await interaction.response.send_message(embed=checker_embed, ephemeral=True)
-                                except Exception as e:
-                                    logger.error(f"Code checker error: {e}")
-                                    try:
-                                        await interaction.response.send_message(
-                                            f"❌ Code check failed: {str(e)[:200]}", ephemeral=True
-                                        )
-                                    except Exception:
-                                        pass
-
-                        view = _BonusDropView()
-                        view.add_item(discord.ui.Button(
-                            label="🔗 Claim URL",
-                            style=discord.ButtonStyle.link,
-                            url=redeem_url
-                        ))
-                    except Exception as ve:
-                        logger.warning(f"Failed to build interactive view: {ve}")
-
                     await asyncio.wait_for(
-                        channel.send(content=role_tag or None, embed=embed, view=view),
+                        channel.send(
+                            content=role_tag or None,
+                            embed=embed,
+                            view=self.build_link_view(item),
+                        ),
                         timeout=5.0
                     )
                     logger.info(f"✅ Dispatched {item.platform.value} drop '{item.code}' to direct channel #{getattr(channel, 'name', channel_id)} ({channel_id})")
+                    return True
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout sending to channel {channel_id}, skipping")
             except Exception as exc:
                 logger.error(f"Failed to deliver message to channel {channel_id}: {exc}")
+            return False
 
         try:
             loop = getattr(self.bot_client, "loop", None)
@@ -476,27 +459,40 @@ class DiscordNotifier:
                     curr_loop = asyncio.get_running_loop()
                     if curr_loop is loop:
                         loop.create_task(_async_send())
+                        return True
                     else:
                         future = asyncio.run_coroutine_threadsafe(_async_send(), loop)
                         try:
-                            future.result(timeout=8.0)
+                            return bool(future.result(timeout=8.0))
                         except concurrent.futures.TimeoutError:
-                            logger.warning(f"Channel dispatch to {channel_id} timed out, task may still complete")
+                            future.cancel()
+                            logger.warning(f"Channel dispatch to {channel_id} timed out")
+                            return False
                 except RuntimeError:
                     # Called from worker thread with no active asyncio loop in that thread
                     future = asyncio.run_coroutine_threadsafe(_async_send(), loop)
                     try:
-                        future.result(timeout=8.0)
+                        return bool(future.result(timeout=8.0))
                     except concurrent.futures.TimeoutError:
-                        logger.warning(f"Channel dispatch to {channel_id} timed out, task may still complete")
+                        future.cancel()
+                        logger.warning(f"Channel dispatch to {channel_id} timed out")
+                        return False
                     except Exception:
                         raise
             elif loop:
                 loop.create_task(_async_send())
+                return True
         except Exception as e:
             logger.error(f"Error scheduling channel dispatch for {channel_id}: {e}")
+        return False
 
-    def send_raw_message(self, platform: Platform, content: str, subscriber_uid: Optional[str] = None) -> bool:
+    def send_raw_message(
+        self,
+        platform: Platform,
+        content: str,
+        subscriber_uid: Optional[str] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
         """
         Sends a raw text message to all configured webhooks and direct channels for the platform.
         """
@@ -506,12 +502,18 @@ class DiscordNotifier:
             if not target_webhooks and not target_channels:
                 target_webhooks = self.dashboard_manager.get_subscriber_webhooks(subscriber_uid, "Default")
                 target_channels = self.dashboard_manager.get_subscriber_channels(subscriber_uid, "Default")
+        elif guild_id is not None:
+            target_webhooks = self.dashboard_manager.get_guild_webhooks(guild_id, platform)
+            target_channels = self.dashboard_manager.get_guild_channels(guild_id, platform)
+            if not target_webhooks and not target_channels:
+                target_webhooks = self.dashboard_manager.get_guild_webhooks(guild_id, "Default")
+                target_channels = self.dashboard_manager.get_guild_channels(guild_id, "Default")
         else:
             target_webhooks = self.get_webhooks_for_platform(platform)
             target_channels = self.get_channels_for_platform(platform)
-        if not subscriber_uid and not target_webhooks and self.default_webhook_url:
+        if not subscriber_uid and guild_id is None and not target_webhooks and self.default_webhook_url:
             target_webhooks = [self.default_webhook_url]
-        if not subscriber_uid and not target_channels and not target_webhooks:
+        if not subscriber_uid and guild_id is None and not target_channels and not target_webhooks:
             target_channels = self.get_channels_for_platform("Default")
             target_webhooks = self.get_webhooks_for_platform("Default")
             if self.default_webhook_url and self.default_webhook_url not in target_webhooks:
@@ -532,12 +534,12 @@ class DiscordNotifier:
                     timeout=10
                 )
                 if resp.status_code in [200, 204]:
-                    logger.info(f"Successfully dispatched raw message for {platform.value} to webhook: {wh[:35]}...")
+                    logger.info(f"Successfully dispatched raw message for {platform.value} to a configured webhook.")
                     success = True
                 else:
-                    logger.error(f"Failed to send raw message webhook. HTTP {resp.status_code}: {resp.text}")
+                    logger.error(f"Failed to send raw message webhook for {platform.value}. HTTP {resp.status_code}.")
             except Exception as e:
-                logger.error(f"Exception while sending raw message webhook: {e}")
+                logger.error(f"Exception while sending raw message webhook for {platform.value}: {type(e).__name__}")
 
         if self.bot_client is not None:
             try:

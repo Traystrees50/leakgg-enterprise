@@ -9,6 +9,9 @@ backup-*/
 seen_codes.json
 *.json.lock
 posts_backup.json
+drop_analytics.db
+drop_analytics.db-shm
+drop_analytics.db-wal
 
 # Logs
 *.log

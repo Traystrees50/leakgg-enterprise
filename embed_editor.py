@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
 from models import BonusCodeItem, Platform
-from config import BOT_NAME, BOT_AVATAR_URL, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES
+from config import BOT_NAME, KICK_STREAM_LINKS, DEFAULT_KICK_LINK, KICK_STREAM_LABELS, DEFAULT_KICK_LABEL, PLATFORM_SOURCE_OVERRIDES
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ class EmbedTemplateManager:
     def get_template(self, platform: str) -> Dict[str, Any]:
         if platform not in self.templates:
             self.templates[platform] = self._get_empty_template()
+        platform_enum = Platform.from_str(platform)
+        if not self.templates[platform].get("thumbnail_url") and platform_enum.logo_url:
+            self.templates[platform]["thumbnail_url"] = platform_enum.logo_url
             self.save()
         return self.templates[platform]
 
@@ -74,26 +77,9 @@ class EmbedTemplateManager:
         }
 
     def _build_template_for_item(self, item: BonusCodeItem) -> Dict[str, Any]:
-        platform_name = item.platform.value.upper()
         emoji = item.platform.emoji
         color = item.platform.embed_color
-
-        if item.is_highroller:
-            title = f"🔥 HIGHROLLER CODE DETECTED: {item.platform.value} {emoji}"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            title = f"👑 VIP NOTICE: {item.platform.value} {emoji}"
-        elif item.event_type == "WEEKLY BOOST":
-            title = f"🎉 WEEKLY BOOST DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "MONTHLY BONUS":
-            title = f"💰 MONTHLY BONUS DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "VIP EVENT":
-            title = f"👑 VIP EVENT DETECTED: {item.platform.value} {emoji}"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            title = f"🚨 NEW DUAL STAKE CODE DETECTED (US & COM) {emoji}"
-        elif item.platform != Platform.UNKNOWN:
-            title = f"🚨 NEW {platform_name} CODE DETECTED {emoji}"
-        else:
-            title = "🚨 NEW PLATFORM CODE DETECTED 🎁"
+        title = item.notification_title
 
         source_display = f"[{item.source_name}]({item.source_url})" if item.source_url else f"`{item.source_name}`"
         if item.platform.value in PLATFORM_SOURCE_OVERRIDES:
@@ -101,32 +87,27 @@ class EmbedTemplateManager:
             source_display = f"[{override_name}]({override_url})"
         fields = [
             {
-                "name": "🎰 Platform",
-                "value": f"`{item.platform.value}` {emoji}",
-                "inline": True
+                "name": "Event",
+                "value": f"{emoji} **{item.platform.value}** • 🌐 {source_display}",
+                "inline": False
             },
             {
-                "name": "🌐 Source",
-                "value": source_display,
-                "inline": True
-            },
-            {
-                "name": "🎁 Bonus Code (Tap to Copy)",
+                "name": "🎁 Bonus code",
                 "value": f"```{item.clean_code}```",
                 "inline": False
             },
             {
-                "name": "💰 Value / Amount",
+                "name": "💰 Value",
                 "value": f"**{item.amount_value or 'Exclusive Offer'}**",
                 "inline": True
             },
             {
-                "name": "🔄 Wager Required",
+                "name": "🔄 Wager",
                 "value": f"**{item.wager_requirement or 'None / 0x'}**",
                 "inline": True
             },
             {
-                "name": "👥 Claims / Limit",
+                "name": "👥 Claims",
                 "value": f"**{item.claims_count or 'Unlimited / Open'}**",
                 "inline": True
             }
@@ -190,7 +171,7 @@ class EmbedTemplateManager:
             "footer_icon": "",
             "author_name": "",
             "author_icon": "",
-            "thumbnail_url": "",
+            "thumbnail_url": item.platform.logo_url,
             "image_url": item.image_url or ""
         }
 

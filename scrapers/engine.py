@@ -18,8 +18,13 @@ from scrapers.validator import StakeCodeValidator
 logger = logging.getLogger(__name__)
 
 
-def _safe_record_drop(item: BonusCodeItem) -> None:
-    """Record a newly detected drop to Supabase drop_history. Non-fatal on failure."""
+def _safe_record_drop(item: BonusCodeItem, availability_status: str = "UNKNOWN") -> None:
+    """Record a newly detected drop locally and in Supabase when configured."""
+    try:
+        from drop_analytics import get_store
+        get_store().record_drop(item, availability_status)
+    except Exception as e:
+        logger.warning(f"Local drop history record failed: {e}")
     try:
         import db_manager
         db_manager.record_drop(item.to_dict())
@@ -112,53 +117,64 @@ class ScraperEngine:
                     if f"Shuffle.us:{c_clean}" in batch_seen or f"Shuffle.com:{c_clean}" in batch_seen:
                         continue
 
-                # 4. Atomically check if already seen and mark as seen (prevents race conditions)
-                if self.tracker.mark_seen_if_new(item):
-                    logger.info(f"🔥 NEW CODE FOUND! [{item.platform.value}] Code: {item.code} | Value: {item.amount_value} | Source: {item.source_name}")
-                    
-                    batch_key = self.tracker._get_key(item.platform.value, item.code, item.source_url)
-                    batch_seen.add(batch_key)
-                    if item.platform in [Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE, Platform.STAKE_US_VIP_NOTICES, Platform.STAKE_COM_VIP_NOTICES]:
-                        batch_seen.add(f"Dual Stake:{c_clean}")
-                        batch_seen.add(f"Stake.us:{c_clean}")
-                        batch_seen.add(f"Stake.com:{c_clean}")
-                    if item.platform in [Platform.SHUFFLE_US, Platform.SHUFFLE_COM]:
-                        batch_seen.add(f"Shuffle.us:{c_clean}")
-                        batch_seen.add(f"Shuffle.com:{c_clean}")
-
-                    # Validate Stake.us/Stake.com/Dual Stake codes via live GraphQL before broadcasting
-                    if self.code_validator and item.platform in (
-                        Platform.STAKE_US,
-                        Platform.STAKE_COM,
-                        Platform.DUAL_STAKE,
-                        Platform.STAKE_US_VIP_NOTICES,
-                        Platform.STAKE_COM_VIP_NOTICES,
-                    ):
-                        try:
-                            vresult = self.code_validator.validate(c_clean, item.platform)
-                            vstatus = vresult.get("status", "UNKNOWN")
-                            if vstatus in ("FULLY_CLAIMED", "EXPIRED"):
-                                logger.info(f"Skipping {vstatus} code '{c_clean}' for {item.platform.value} (validator)")
-                                continue
-                            try:
-                                import db_manager
-                                db_manager.update_availability_status(c_clean, item.platform.value, vstatus)
-                            except Exception:
-                                pass
-                        except Exception as ve:
-                            logger.debug(f"Validator check failed for {c_clean} on {item.platform.value}: {ve}")
-
-                    new_items.append(item)
-
-                    # Record to Supabase drop_history (non-fatal)
-                    _safe_record_drop(item)
-
-                    # Dispatch Discord notification in real-time
-                    if notify:
-                        self.notifier.send_notification(item)
-                else:
+                # Do not permanently deduplicate a candidate until it has either
+                # been intentionally scanned without notifications or dispatched.
+                if self.tracker.is_item_seen(item):
                     batch_seen.add(batch_key)
                     logger.debug(f"Code already tracked: [{item.platform.value}] {item.code}")
+                    continue
+
+                logger.info(f"🔥 NEW CODE FOUND! [{item.platform.value}] Code: {item.code} | Value: {item.amount_value} | Source: {item.source_name}")
+                batch_seen.add(batch_key)
+                if item.platform in [Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE, Platform.STAKE_US_VIP_NOTICES, Platform.STAKE_COM_VIP_NOTICES]:
+                    batch_seen.add(f"Dual Stake:{c_clean}")
+                    batch_seen.add(f"Stake.us:{c_clean}")
+                    batch_seen.add(f"Stake.com:{c_clean}")
+                if item.platform in [Platform.SHUFFLE_US, Platform.SHUFFLE_COM]:
+                    batch_seen.add(f"Shuffle.us:{c_clean}")
+                    batch_seen.add(f"Shuffle.com:{c_clean}")
+
+                availability_status = "UNKNOWN"
+                # Validate Stake.us/Stake.com/Dual Stake codes via live GraphQL before broadcasting
+                if self.code_validator and item.platform in (
+                    Platform.STAKE_US,
+                    Platform.STAKE_COM,
+                    Platform.DUAL_STAKE,
+                    Platform.STAKE_US_VIP_NOTICES,
+                    Platform.STAKE_COM_VIP_NOTICES,
+                ):
+                    try:
+                        vresult = self.code_validator.validate(c_clean, item.platform)
+                        vstatus = vresult.get("status", "UNKNOWN")
+                        if vstatus in ("FULLY_CLAIMED", "EXPIRED"):
+                            logger.info(f"Skipping {vstatus} code '{c_clean}' for {item.platform.value} (validator)")
+                            continue
+                        try:
+                            import db_manager
+                            db_manager.update_availability_status(c_clean, item.platform.value, vstatus)
+                        except Exception:
+                            pass
+                    except Exception as ve:
+                        logger.debug(f"Validator check failed for {c_clean} on {item.platform.value}: {ve}")
+
+                if notify:
+                    try:
+                        delivered = self.notifier.send_notification(item)
+                    except Exception as exc:
+                        logger.error(f"Notification dispatch failed for {item.platform.value} code '{item.code}': {exc}")
+                        delivered = False
+                    if not delivered:
+                        logger.warning(
+                            f"Notification for [{item.platform.value}] code '{item.code}' was not delivered; "
+                            "it will be retried on a later scan."
+                        )
+                        continue
+
+                if not self.tracker.mark_seen_if_new(item):
+                    continue
+
+                new_items.append(item)
+                _safe_record_drop(item, availability_status)
 
             return new_items
 

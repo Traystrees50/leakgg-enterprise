@@ -24,7 +24,7 @@ class DashboardManager:
     Enterprise-ready dashboard & routing manager.
     Supports multi-channel (multiple channel IDs) and multi-webhook (multiple webhook URLs)
     mappings per platform, with dynamic persistence, environment fallbacks,
-    and granular owner / crypto subscriber access control.
+    and guild-scoped route management with owner-granted access control.
     """
     def __init__(self, filepath: str = DASHBOARD_CONFIG_FILE):
         self.filepath = filepath
@@ -50,7 +50,8 @@ class DashboardManager:
                 "realtime_monitoring_enabled": True,
                 "check_interval_seconds": CHECK_INTERVAL_SECONDS
             },
-            "subscriber_routes": {}
+            "subscriber_routes": {},
+            "guild_routes": {},
         }
         self.load()
 
@@ -136,6 +137,7 @@ class DashboardManager:
                             **data.get("settings", {})
                         }
                         self.config["subscriber_routes"] = data.get("subscriber_routes", {})
+                        self.config["guild_routes"] = data.get("guild_routes", {})
                     logger.info(f"Loaded dashboard configuration from {self.filepath}")
             except Exception as e:
                 logger.error(f"Error loading dashboard config from {self.filepath}: {e}")
@@ -147,7 +149,7 @@ class DashboardManager:
 
     def is_authorized(self, user_id: Union[int, str]) -> bool:
         """
-        Returns True if the user is the project owner OR an active authorized subscriber ($2 crypto).
+        Returns True if the user is the project owner or has explicitly granted dashboard access.
         Checks expiration date for time-limited subscriptions.
         """
         uid = str(user_id).strip()
@@ -363,6 +365,181 @@ class DashboardManager:
             self.config.get("route_labels", {}).get("channels", {}).pop(key, None)
         self.save()
         return key
+
+    def _get_guild_routes(self, guild_id: Union[int, str]) -> Dict[str, Any]:
+        routes = self.config.setdefault("guild_routes", {}).setdefault(
+            str(guild_id).strip(),
+            {"channels": {}, "webhooks": {}, "channel_labels": {}, "webhook_labels": {}},
+        )
+        return routes
+
+    def get_configured_guild_ids(self) -> List[str]:
+        return [
+            guild_id
+            for guild_id, routes in self.config.get("guild_routes", {}).items()
+            if any(routes.get(route_type) for route_type in ("channels", "webhooks"))
+        ]
+
+    def get_guild_channels(self, guild_id: Union[int, str], platform_input: Any) -> List[int]:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        channels = self._ensure_channel_list(routes.get("channels", {}).get(key))
+        if not channels and key != "Default":
+            channels = self._ensure_channel_list(routes.get("channels", {}).get("Default"))
+        return channels
+
+    def get_guild_webhooks(self, guild_id: Union[int, str], platform_input: Any) -> List[str]:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        webhooks = self._ensure_webhook_list(routes.get("webhooks", {}).get(key))
+        if not webhooks and key != "Default":
+            webhooks = self._ensure_webhook_list(routes.get("webhooks", {}).get("Default"))
+        return webhooks
+
+    def get_guild_route_label(
+        self, guild_id: Union[int, str], route_type: str, platform_input: Any, target: Any
+    ) -> Optional[str]:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        label_key = "channel_labels" if route_type == "channels" else "webhook_labels"
+        labels = routes.get(label_key, {})
+        label = labels.get(key, {}).get(str(target))
+        if label is None and key != "Default":
+            label = labels.get("Default", {}).get(str(target))
+        return label
+
+    def add_guild_channel(
+        self, guild_id: Union[int, str], platform_input: Any, channel_id: int, label: Optional[str] = None
+    ) -> str:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        channels = self._ensure_channel_list(routes.get("channels", {}).get(key))
+        channel_id = int(channel_id)
+        if channel_id not in channels:
+            channels.append(channel_id)
+        routes.setdefault("channels", {})[key] = channels
+        if label and label.strip():
+            routes.setdefault("channel_labels", {}).setdefault(key, {})[str(channel_id)] = label.strip()[:80]
+        self.save()
+        return key
+
+    def remove_guild_channel(self, guild_id: Union[int, str], platform_input: Any, channel_id: int) -> str:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        channels = self._ensure_channel_list(routes.get("channels", {}).get(key))
+        channel_id = int(channel_id)
+        if channel_id in channels:
+            channels.remove(channel_id)
+        if channels:
+            routes["channels"][key] = channels
+        else:
+            routes.get("channels", {}).pop(key, None)
+        routes.get("channel_labels", {}).get(key, {}).pop(str(channel_id), None)
+        self.save()
+        return key
+
+    def add_guild_webhook(
+        self, guild_id: Union[int, str], platform_input: Any, webhook_url: str, label: Optional[str] = None
+    ) -> str:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        webhooks = self._ensure_webhook_list(routes.get("webhooks", {}).get(key))
+        url = str(webhook_url).strip()
+        if url and url not in webhooks:
+            webhooks.append(url)
+        routes.setdefault("webhooks", {})[key] = webhooks
+        if url and label and label.strip():
+            routes.setdefault("webhook_labels", {}).setdefault(key, {})[url] = label.strip()[:80]
+        self.save()
+        return key
+
+    def remove_guild_webhook(
+        self, guild_id: Union[int, str], platform_input: Any, webhook_url: str
+    ) -> str:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        webhooks = self._ensure_webhook_list(routes.get("webhooks", {}).get(key))
+        url = str(webhook_url).strip()
+        if url in webhooks:
+            webhooks.remove(url)
+        if webhooks:
+            routes["webhooks"][key] = webhooks
+        else:
+            routes.get("webhooks", {}).pop(key, None)
+        routes.get("webhook_labels", {}).get(key, {}).pop(url, None)
+        self.save()
+        return key
+
+    def clear_guild_routes(self, guild_id: Union[int, str], platform_input: Any, route_type: Optional[str] = None) -> str:
+        routes = self._get_guild_routes(guild_id)
+        key = self._normalize_platform_key(platform_input)
+        route_types = (route_type,) if route_type else ("channels", "webhooks")
+        for target_type in route_types:
+            if target_type not in ("channels", "webhooks"):
+                raise ValueError(f"Unknown route type: {target_type}")
+            routes.get(target_type, {}).pop(key, None)
+            label_key = "channel_labels" if target_type == "channels" else "webhook_labels"
+            routes.get(label_key, {}).pop(key, None)
+        self.save()
+        return key
+
+    def get_guild_routes_summary(self, guild_id: Union[int, str]) -> Dict[str, Dict[str, Any]]:
+        summary: Dict[str, Dict[str, Any]] = {}
+        for platform in [p for p in Platform if p != Platform.UNKNOWN]:
+            key = platform.value
+            direct_channels = self._ensure_channel_list(
+                self._get_guild_routes(guild_id).get("channels", {}).get(key)
+            )
+            direct_webhooks = self._ensure_webhook_list(
+                self._get_guild_routes(guild_id).get("webhooks", {}).get(key)
+            )
+            channels = self.get_guild_channels(guild_id, platform)
+            webhooks = self.get_guild_webhooks(guild_id, platform)
+            channel_label_platform = platform if direct_channels else "Default"
+            webhook_label_platform = platform if direct_webhooks else "Default"
+            summary[key] = {
+                "emoji": platform.emoji,
+                "color": platform.embed_color,
+                "channel_id": channels[0] if channels else None,
+                "channel_ids": channels,
+                "channel_count": len(channels),
+                "channel_inherited": not direct_channels and bool(channels),
+                "channels_display": "\n".join(
+                    f"• **{self.get_guild_route_label(guild_id, 'channels', channel_label_platform, cid) or 'Channel'}** <#{cid}> (`{cid}`)"
+                    for cid in channels
+                ) or "❌ *Not Assigned*",
+                "webhook_configured": bool(webhooks),
+                "webhook_urls": webhooks,
+                "webhook_count": len(webhooks),
+                "webhook_inherited": not direct_webhooks and bool(webhooks),
+                "webhooks_display": "\n".join(
+                    f"• **{self.get_guild_route_label(guild_id, 'webhooks', webhook_label_platform, url) or f'Webhook {index}'}** 🔒 URL saved"
+                    for index, url in enumerate(webhooks, start=1)
+                ) or "❌ *Not Set*",
+                "webhook_masked": "Configured" if webhooks else "Not Set",
+            }
+        channels = self.get_guild_channels(guild_id, "Default")
+        webhooks = self.get_guild_webhooks(guild_id, "Default")
+        summary["Default"] = {
+            "emoji": "🌐",
+            "color": 0x5865F2,
+            "channel_id": channels[0] if channels else None,
+            "channel_ids": channels,
+            "channel_count": len(channels),
+            "channels_display": "\n".join(
+                f"• **{self.get_guild_route_label(guild_id, 'channels', 'Default', cid) or 'Channel'}** <#{cid}> (`{cid}`)"
+                for cid in channels
+            ) or "❌ *Not Assigned*",
+            "webhook_configured": bool(webhooks),
+            "webhook_urls": webhooks,
+            "webhook_count": len(webhooks),
+            "webhooks_display": "\n".join(
+                f"• **{self.get_guild_route_label(guild_id, 'webhooks', 'Default', url) or f'Webhook {index}'}** 🔒 URL saved"
+                for index, url in enumerate(webhooks, start=1)
+            ) or "❌ *Not Set*",
+            "webhook_masked": "Configured" if webhooks else "Not Set",
+        }
+        return summary
 
     # ----------------------------------------------------
     # Per-Subscriber / Per-Guild Routing Operations
@@ -708,6 +885,19 @@ class DashboardManager:
         for p in platforms:
             channels = self.get_channels(p)
             webhooks = self.get_webhooks(p)
+            direct_channels = self._ensure_channel_list(self.config["channels"].get(p.value))
+            direct_webhooks = self._ensure_webhook_list(self.config["webhooks"].get(p.value))
+            disabled_env_webhooks = set(self.config.get("disabled_env_webhooks", {}).get(p.value, []))
+            has_platform_env_webhook = bool(
+                self._get_environment_webhook(p.value) and "platform" not in disabled_env_webhooks
+            )
+            channel_inherited = p.value != "Default" and not direct_channels and bool(channels)
+            webhook_inherited = (
+                p.value != "Default"
+                and not direct_webhooks
+                and not has_platform_env_webhook
+                and bool(webhooks)
+            )
             channel_label_platform = p if p.value in self.config["channels"] else "Default"
             webhook_label_platform = p if p.value in self.config["webhooks"] else "Default"
             primary_ch = channels[0] if channels else None
@@ -738,10 +928,12 @@ class DashboardManager:
                 "channel_id": primary_ch,
                 "channel_ids": channels,
                 "channel_count": len(channels),
+                "channel_inherited": channel_inherited,
                 "channels_display": ch_display,
                 "webhook_configured": bool(webhooks),
                 "webhook_urls": webhooks,
                 "webhook_count": len(webhooks),
+                "webhook_inherited": webhook_inherited,
                 "webhooks_display": wh_display,
                 "webhook_masked": "Configured" if primary_wh else "Not Set"
             }

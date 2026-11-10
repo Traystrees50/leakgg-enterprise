@@ -1,9 +1,8 @@
 import base64
-import os
 import re
 import logging
-from typing import Optional, Dict, Any
-from config import OCR_SPACE_API_URL
+from typing import Optional
+from config import OCR_SPACE_API_KEY, OCR_SPACE_API_URL
 from network_manager import ResilientSession
 
 logger = logging.getLogger(__name__)
@@ -32,25 +31,44 @@ _OCR_STOP_WORDS = {
 
 class OCRClient:
     def __init__(self, api_key: Optional[str] = None):
-        if api_key is not None:
-            if api_key == "":
-                self.api_key = None
-            else:
-                self.api_key = api_key
-        else:
-            self.api_key = None
+        self.api_key = api_key if api_key is not None else OCR_SPACE_API_KEY or None
         self.session = ResilientSession(timeout=15, max_retries=2)
+        self._local_engine = None
+        self._local_engine_checked = False
 
     @property
     def is_available(self) -> bool:
-        return bool(self.api_key)
+        return bool(self._load_local_engine() or self.api_key)
 
-    def ocr_image(self, image_url: str) -> Optional[str]:
-        if not self.api_key:
-            logger.debug("OCR.space API key not configured; skipping OCR")
+    def _load_local_engine(self):
+        if self._local_engine_checked:
+            return self._local_engine
+        self._local_engine_checked = True
+        try:
+            from rapidocr import RapidOCR
+            self._local_engine = RapidOCR()
+        except ImportError:
+            logger.debug("Local OCR is unavailable; install rapidocr and onnxruntime to enable it")
+        except Exception as exc:
+            logger.warning(f"Could not initialize local OCR engine: {exc}")
+        return self._local_engine
+
+    def _run_local_ocr(self, image_bytes: bytes) -> Optional[str]:
+        engine = self._load_local_engine()
+        if engine is None or not image_bytes:
             return None
-        if not image_url or not image_url.startswith("http"):
-            logger.debug(f"OCR skipped: invalid image URL '{image_url}'")
+        try:
+            result = engine(image_bytes)
+            if not result:
+                return None
+            lines = [str(text).strip() for text in (getattr(result, "txts", None) or ()) if text]
+            return "\n".join(lines) or None
+        except Exception as exc:
+            logger.warning(f"Local image OCR failed: {exc}")
+            return None
+
+    def _ocr_image_url_api(self, image_url: str) -> Optional[str]:
+        if not self.api_key:
             return None
         try:
             resp = self.session.post(
@@ -68,22 +86,43 @@ class OCRClient:
                 timeout=30,
             )
             if resp is None or resp.status_code != 200:
-                logger.warning(f"OCR.space request failed for {image_url}: HTTP {getattr(resp, 'status_code', 'None')}")
+                logger.warning(f"OCR.space image request failed: HTTP {getattr(resp, 'status_code', 'None')}")
                 return None
             result = resp.json()
             if result.get("IsErroredOnProcessing"):
                 err = result.get("ErrorMessage", "unknown")
-                logger.warning(f"OCR.space errored on {image_url}: {err}")
+                logger.warning(f"OCR.space image processing failed: {err}")
                 return None
             parsed = result.get("ParsedResults", [])
             if not parsed:
-                logger.debug(f"OCR.space returned no parsed results for {image_url}")
                 return None
             text = parsed[0].get("ParsedText", "")
             return text.strip() if text else None
-        except Exception as e:
-            logger.warning(f"OCR failed for {image_url}: {e}")
+        except Exception as exc:
+            logger.warning(f"OCR.space image request failed: {exc}")
             return None
+
+    def ocr_image(self, image_url: str) -> Optional[str]:
+        if not image_url or not image_url.startswith(("http://", "https://")):
+            logger.debug("OCR skipped an invalid image URL")
+            return None
+        if self._load_local_engine():
+            try:
+                response = self.session.get(image_url, timeout=30)
+                if response is not None and response.status_code == 200:
+                    image_bytes = response.content
+                    if len(image_bytes) <= 10 * 1024 * 1024:
+                        text = self._run_local_ocr(image_bytes)
+                        if text:
+                            return text
+                    else:
+                        logger.warning("Local OCR skipped an image larger than 10 MB")
+            except Exception as exc:
+                logger.warning(f"Could not download image for local OCR: {exc}")
+        text = self._ocr_image_url_api(image_url)
+        if text is None and not self.api_key:
+            logger.debug("No OCR engine is available for this image")
+        return text
 
     def extract_code(self, ocr_text: str) -> Optional[str]:
         if not ocr_text:
@@ -110,7 +149,15 @@ class OCRClient:
         return self.extract_code(text)
 
     def ocr_image_bytes(self, image_bytes: bytes) -> Optional[str]:
-        if not self.api_key or not image_bytes:
+        if not image_bytes:
+            return None
+        if len(image_bytes) > 10 * 1024 * 1024:
+            logger.warning("OCR skipped an image larger than 10 MB")
+            return None
+        local_text = self._run_local_ocr(image_bytes)
+        if local_text:
+            return local_text
+        if not self.api_key:
             return None
         try:
             b64 = base64.b64encode(image_bytes).decode("ascii")

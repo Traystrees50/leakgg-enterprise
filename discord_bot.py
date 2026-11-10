@@ -2,7 +2,7 @@ import logging
 import asyncio
 import re
 import copy
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import discord
 from discord.ext import commands, tasks
 
@@ -41,11 +41,9 @@ def create_unauthorized_embed() -> discord.Embed:
     Generates a clean embed informing non-authorized users of the owner restriction.
     """
     embed = discord.Embed(
-        title="🔒 Access Restricted — Owner / Subscriber Access Only",
+        title="🔒 Dashboard Access Restricted",
         description=(
-            f"Administrative and platform routing configuration is restricted to the Project Creator & Owner (<@{OWNER_USER_ID}>) "
-            "and active subscribers.\n\n"
-            "DM the Project Owner to inquire about premium dashboard access."
+            f"Platform routing is available to this server's administrators and users authorized by the project owner (<@{OWNER_USER_ID}>)."
         ),
         color=0xFF1493
     )
@@ -59,40 +57,8 @@ def create_unauthorized_embed() -> discord.Embed:
         value=f"<@{OWNER_USER_ID}>",
         inline=True
     )
-    embed.set_footer(text=f"{BOT_NAME} • Premium Access System", icon_url=BOT_AVATAR_URL)
+    embed.set_footer(text=f"{BOT_NAME} • Server Dashboard Access", icon_url=BOT_AVATAR_URL)
     return embed
-
-def create_subscribe_embed() -> discord.Embed:
-    """
-    Generates a subscription information embed guiding users on how to
-    inquire about premium dashboard access.
-    """
-    embed = discord.Embed(
-        title="📋 Premium Dashboard Access — Inquiry Required",
-        description=(
-            "Unlock the full **Interactive Dashboard** with multi-platform routing, custom webhooks, "
-            "and real-time monitoring controls across all your servers."
-        ),
-        color=0x10B981
-    )
-    embed.add_field(
-        name="💬 Official Community",
-        value=f"[👉 Join Discord Server]({DISCORD_INVITE_URL})",
-        inline=True
-    )
-    embed.add_field(
-        name="👑 Project Owner",
-        value=f"<@{OWNER_USER_ID}>",
-        inline=True
-    )
-    embed.add_field(
-        name="📋 Access Type",
-        value="Inquiry-Based",
-        inline=True
-    )
-    embed.set_footer(text=f"{BOT_NAME} • Premium Subscription", icon_url=BOT_AVATAR_URL)
-    return embed
-
 
 def create_info_embed() -> discord.Embed:
     embed = discord.Embed(
@@ -100,7 +66,9 @@ def create_info_embed() -> discord.Embed:
         description=(
             f"**{BOT_NAME}** monitors configured Telegram feeds, StakeStats, CodeStats, and web sources for "
             "bonus-code drops, extracts code details (including wager requirements when provided), filters "
-            "duplicates, and sends platform-specific Discord notifications with source and claim links.\n\n"
+            "duplicates, and sends platform-specific Discord notifications with source and claim links. "
+            "Each server manages its own event destinations; monitored sources and scanning are shared bot-wide. "
+            "Placeholder codes in image-based events can be read locally with the included OCR engine.\n\n"
             "**GAMBA source rule:** only messages explicitly identified as GAMBA from "
             "[Faircodes](https://t.me/faircodes) are treated as GAMBA. Its posts for other platforms are ignored.\n\n"
             f"💬 **Official Discord:** [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
@@ -124,13 +92,14 @@ def create_info_embed() -> discord.Embed:
             "• `/activeus` — Stake.us codes only.\n"
             "• `/activecom` — Stake.com codes only.\n"
             "• `/codes [platform]` — Query active codes with an optional platform filter.\n"
-            "• `/dashboard` — Configure labeled platform channels and webhooks.\n"
-            "• `/help`, `/commands`, `/links`, `/subscribe` — Help, command list, links, and access information."
+            "• `/dashboard` — Select platform(s), then add/remove labeled channel IDs or webhooks and test routes.\n"
+            "• `/stats [days]` and `/history` — Guild-specific drop analytics and recent drop history.\n"
+            "• `/help`, `/commands`, `/links`, `/status` — Help, command list, platform links, and bot status."
         ),
         inline=False
     )
 
-    embed.set_footer(text=f"{BOT_NAME} • Enterprise Ready", icon_url=BOT_AVATAR_URL)
+    embed.set_footer(text=f"{BOT_NAME} • Bonus Drop Monitoring", icon_url=BOT_AVATAR_URL)
     return embed
 
 # Sample test items for each platform for testing routing
@@ -424,9 +393,9 @@ def create_public_dashboard_embed() -> discord.Embed:
         title=f"🎛️ {BOT_NAME} — Public Dashboard",
         description=(
             "Welcome to the **Active Codes** public dashboard.\n\n"
-            "Below are all platform affiliate/signup links and routing configuration. "
+            "Below are platform signup links and public bot information. "
             "Authorized users can open the **full interactive control panel** "
-            "with multi-platform routing, custom webhooks, embed editing, and real-time monitoring controls."
+            "to manage this server's destinations. Monitoring sources and scanning are shared bot-wide."
         ),
         color=0x1475E1
     )
@@ -512,7 +481,12 @@ class PublicDashboardView(discord.ui.View):
         return True
 
 
-def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscriber_uid: Optional[str] = None) -> List[discord.Embed]:
+def create_dashboard_embed(
+    manager: DashboardManager,
+    bot: commands.Bot,
+    subscriber_uid: Optional[str] = None,
+    guild_id: Optional[int] = None,
+) -> List[discord.Embed]:
     """
     Generates enterprise visual status embeds representing the multi-channel & multi-webhook
     routing configuration across all platforms and real-time monitoring state.
@@ -520,7 +494,7 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
     """
     is_realtime = manager.get_setting("realtime_monitoring_enabled", True)
     interval = manager.get_setting("check_interval_seconds", CHECK_INTERVAL_SECONDS)
-    summary = manager.get_all_routes_summary()
+    summary = manager.get_guild_routes_summary(guild_id) if guild_id is not None else manager.get_all_routes_summary()
     src_summary = manager.get_all_monitored_sources_summary()
 
     status_badge = f"🟢 **ACTIVE** (Every {interval}s)" if is_realtime else "🔴 **PAUSED**"
@@ -544,7 +518,10 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
                         f"👤 **Personal Routing Mode** — You are configuring your own channel routes. "
                         f"Notifications will be dispatched to your channels independently of other servers.\n"
                         if subscriber_uid
-                        else "Configure multi-channel and multi-webhook distribution per platform using the menus below."
+                        else (
+                            f"**Server:** `{bot.get_guild(guild_id).name if guild_id and bot.get_guild(guild_id) else guild_id or 'Global'}`\n"
+                            "Select platform(s), then choose an action below. Routes are isolated to this server; use Refresh or Test Route to verify them."
+                        )
                     )
                 )
                 if idx == 0
@@ -568,31 +545,45 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
 
                 channel_label_platform = plat_name if specific_channels else "Default"
                 webhook_label_platform = plat_name if specific_webhooks else "Default"
+                max_channel_lines = 2 if not specific_channels and sub_channels else 3
+                max_webhook_lines = 2 if not specific_webhooks and sub_webhooks else 3
                 channel_lines = [
                     f"• **{manager.get_subscriber_route_label(subscriber_uid, 'channels', channel_label_platform, cid) or 'Channel'}** "
                     f"<#{cid}> (`{cid}`)"
-                    for cid in sub_channels[:3]
+                    for cid in sub_channels[:max_channel_lines]
                 ]
                 webhook_lines = [
                     f"• **{manager.get_subscriber_route_label(subscriber_uid, 'webhooks', webhook_label_platform, url) or f'Webhook {index}'}** "
                     "🔒 URL saved"
-                    for index, url in enumerate(sub_webhooks[:3], start=1)
+                    for index, url in enumerate(sub_webhooks[:max_webhook_lines], start=1)
                 ]
-                if len(sub_channels) > 3:
-                    channel_lines.append(f"• +{len(sub_channels) - 3} more")
-                if len(sub_webhooks) > 3:
-                    webhook_lines.append(f"• +{len(sub_webhooks) - 3} more")
+                if not specific_channels and sub_channels:
+                    channel_lines.insert(0, "↳ Your Default route")
+                if not specific_webhooks and sub_webhooks:
+                    webhook_lines.insert(0, "↳ Your Default route")
+                if len(sub_channels) > max_channel_lines:
+                    channel_lines.append(f"• +{len(sub_channels) - max_channel_lines} more")
+                if len(sub_webhooks) > max_webhook_lines:
+                    webhook_lines.append(f"• +{len(sub_webhooks) - max_webhook_lines} more")
                 ch_display = "\n".join(channel_lines) or "❌ *Not Assigned*"
                 wh_display = "\n".join(webhook_lines) or "❌ *Not Set*"
             else:
                 channel_ids = data.get("channel_ids", [])
                 webhook_urls = data.get("webhook_urls", [])
-                channel_lines = data.get("channels_display", "❌ *Not Assigned*").splitlines()[:3]
-                webhook_lines = data.get("webhooks_display", "❌ *Not Set*").splitlines()[:3]
-                if len(channel_ids) > 3:
-                    channel_lines.append(f"• +{len(channel_ids) - 3} more")
-                if len(webhook_urls) > 3:
-                    webhook_lines.append(f"• +{len(webhook_urls) - 3} more")
+                channel_inherited = data.get("channel_inherited", False)
+                webhook_inherited = data.get("webhook_inherited", False)
+                channel_limit = 2 if channel_inherited else 3
+                webhook_limit = 2 if webhook_inherited else 3
+                channel_lines = data.get("channels_display", "❌ *Not Assigned*").splitlines()[:channel_limit]
+                webhook_lines = data.get("webhooks_display", "❌ *Not Set*").splitlines()[:webhook_limit]
+                if channel_inherited:
+                    channel_lines.insert(0, "↳ Default route")
+                if webhook_inherited:
+                    webhook_lines.insert(0, "↳ Default route")
+                if len(channel_ids) > channel_limit:
+                    channel_lines.append(f"• +{len(channel_ids) - channel_limit} more")
+                if len(webhook_urls) > webhook_limit:
+                    webhook_lines.append(f"• +{len(webhook_urls) - webhook_limit} more")
                 ch_display = "\n".join(channel_lines)
                 wh_display = "\n".join(webhook_lines)
 
@@ -632,6 +623,7 @@ class AddChannelModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.channels_input = discord.ui.TextInput(
             label="Channel ID",
@@ -662,13 +654,28 @@ class AddChannelModal(discord.ui.Modal):
             await interaction.response.send_message("❌ Please provide a non-empty destination label.", ephemeral=True)
             return
 
+        if self.guild_id is None or interaction.guild_id != self.guild_id or interaction.guild is None:
+            await interaction.response.send_message("❌ This destination must belong to the server's dashboard.", ephemeral=True)
+            return
+        channel = interaction.guild.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(channel_id)
+            except discord.HTTPException:
+                channel = None
+        if channel is None or getattr(getattr(channel, "guild", None), "id", None) != self.guild_id:
+            await interaction.response.send_message("❌ That channel is not in this server or cannot be accessed.", ephemeral=True)
+            return
+
         for plat in self.platforms:
-            if self.subscriber_uid:
+            if self.guild_id is not None:
+                self.manager.add_guild_channel(self.guild_id, plat, channel_id, label)
+            elif self.subscriber_uid:
                 self.manager.add_subscriber_channel(self.subscriber_uid, plat, channel_id, label)
             else:
                 self.manager.add_channel(plat, channel_id, label)
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid, self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
         await interaction.followup.send(
             f"✅ Added **{label}** (<#{channel_id}>) to **{', '.join(self.platforms)}**!",
@@ -683,6 +690,7 @@ class RemoveChannelModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.channel_input = discord.ui.TextInput(
             label="Channel ID to Remove",
@@ -702,12 +710,14 @@ class RemoveChannelModal(discord.ui.Modal):
             return
 
         for plat in self.platforms:
-            if self.subscriber_uid:
+            if self.guild_id is not None:
+                self.manager.remove_guild_channel(self.guild_id, plat, cid)
+            elif self.subscriber_uid:
                 self.manager.remove_subscriber_channel(self.subscriber_uid, plat, cid)
             else:
                 self.manager.remove_channel(plat, cid)
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid, self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
         await interaction.followup.send(
             f"✅ Removed Channel ID `<#{cid}>` from **{', '.join(self.platforms)}**.",
@@ -722,6 +732,7 @@ class AddWebhookModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.webhook_input = discord.ui.TextInput(
             label="Discord Webhook URL",
@@ -750,13 +761,31 @@ class AddWebhookModal(discord.ui.Modal):
             await interaction.response.send_message("❌ Please provide a non-empty destination label.", ephemeral=True)
             return
 
+        if self.guild_id is None or interaction.guild_id != self.guild_id:
+            await interaction.response.send_message("❌ This webhook must belong to the server's dashboard.", ephemeral=True)
+            return
+        try:
+            webhook = discord.Webhook.from_url(url, client=interaction.client)
+            webhook_info = await webhook.fetch()
+        except discord.HTTPException:
+            await interaction.response.send_message("❌ Discord could not validate that webhook.", ephemeral=True)
+            return
+        except ValueError:
+            await interaction.response.send_message("❌ That webhook URL is invalid.", ephemeral=True)
+            return
+        if getattr(webhook_info, "guild_id", None) != self.guild_id:
+            await interaction.response.send_message("❌ That webhook does not belong to this server.", ephemeral=True)
+            return
+
         for plat in self.platforms:
-            if self.subscriber_uid:
+            if self.guild_id is not None:
+                self.manager.add_guild_webhook(self.guild_id, plat, url, label)
+            elif self.subscriber_uid:
                 self.manager.add_subscriber_webhook(self.subscriber_uid, plat, url, label)
             else:
                 self.manager.add_webhook(plat, url, label)
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid, self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
         await interaction.followup.send(
             f"✅ Added webhook **{label}** to **{', '.join(self.platforms)}**!",
@@ -771,6 +800,7 @@ class RemoveWebhookModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.webhook_input = discord.ui.TextInput(
             label="Webhook URL or URL Fragment to Remove",
@@ -784,7 +814,13 @@ class RemoveWebhookModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         target = self.webhook_input.value.strip()
         for plat in self.platforms:
-            if self.subscriber_uid:
+            if self.guild_id is not None:
+                current_whs = self.manager.get_guild_webhooks(self.guild_id, plat)
+                for wh in current_whs:
+                    label = self.manager.get_guild_route_label(self.guild_id, "webhooks", plat, wh)
+                    if target in wh or (label and target.lower() in label.lower()):
+                        self.manager.remove_guild_webhook(self.guild_id, plat, wh)
+            elif self.subscriber_uid:
                 current_whs = self.manager.get_subscriber_webhooks(self.subscriber_uid, plat)
                 for wh in current_whs:
                     label = self.manager.get_subscriber_route_label(self.subscriber_uid, "webhooks", plat, wh)
@@ -797,7 +833,7 @@ class RemoveWebhookModal(discord.ui.Modal):
                     if target in wh or (label and target.lower() in label.lower()):
                         self.manager.remove_webhook(plat, wh)
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid, self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
         await interaction.followup.send(
             f"✅ Removed matching webhook from **{', '.join(self.platforms)}**.",
@@ -811,6 +847,7 @@ class IntervalModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.interval_input = discord.ui.TextInput(
             label="Scan Interval (in seconds)",
@@ -832,7 +869,7 @@ class IntervalModal(discord.ui.Modal):
             if hasattr(interaction.client, "background_monitor_task") and interaction.client.background_monitor_task.is_running():
                 interaction.client.background_monitor_task.change_interval(seconds=val)
 
-            new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+            new_embed = create_dashboard_embed(self.manager, interaction.client, guild_id=self.guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
             await interaction.followup.send(f"✅ Monitoring interval updated to **{val} seconds**.", ephemeral=True)
         except ValueError:
@@ -845,6 +882,7 @@ class AddSourceModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.type_input = discord.ui.TextInput(
             label="Source Type (telegram or web)",
@@ -884,7 +922,7 @@ class AddSourceModal(discord.ui.Modal):
             success, msg = self.manager.add_telegram_source(src_val, plat_val)
 
         if success:
-            new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+            new_embed = create_dashboard_embed(self.manager, interaction.client, guild_id=self.guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
             await interaction.followup.send(msg, ephemeral=True)
         else:
@@ -897,6 +935,7 @@ class RemoveSourceModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(view, "guild_id", None)
 
         self.source_input = discord.ui.TextInput(
             label="Custom Channel Handle or Web URL to Remove",
@@ -915,7 +954,7 @@ class RemoveSourceModal(discord.ui.Modal):
             success, msg = self.manager.remove_telegram_source(src_val)
 
         if success:
-            new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+            new_embed = create_dashboard_embed(self.manager, interaction.client, guild_id=self.guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
             await interaction.followup.send(msg, ephemeral=True)
         else:
@@ -1002,7 +1041,7 @@ class GrantAccessModal(discord.ui.Modal):
         )
         self.note_input = discord.ui.TextInput(
             label="Note (optional)",
-            placeholder="e.g. Paid subscriber, friend, etc.",
+            placeholder="e.g. moderator, partner, community member",
             required=False,
             max_length=200,
             style=discord.TextStyle.short
@@ -1044,7 +1083,7 @@ class RevokeAccessModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = view
         self.user_input = discord.ui.TextInput(
-            label="Subscriber User ID",
+            label="Authorized User ID",
             placeholder="e.g. 123456789012345678",
             required=True,
             max_length=100,
@@ -1058,17 +1097,25 @@ class RevokeAccessModal(discord.ui.Modal):
         removed = self.manager.remove_subscriber(user_id)
         new_embed = create_dashboard_embed(self.manager, interaction.client, None)
         await interaction.response.edit_message(embeds=new_embed, view=self.parent_view)
-        message = f"✅ Revoked dashboard access from `{user_id}`." if removed else f"❌ `{user_id}` is not an active subscriber or is the owner."
+        message = f"✅ Revoked dashboard access from `{user_id}`." if removed else f"❌ `{user_id}` has no dashboard access or is the owner."
         await interaction.followup.send(message, ephemeral=True)
 
 
 class ManualPostModal(discord.ui.Modal):
-    def __init__(self, platforms: List[str], manager: DashboardManager, bot: commands.Bot, subscriber_uid: Optional[str] = None):
+    def __init__(
+        self,
+        platforms: List[str],
+        manager: DashboardManager,
+        bot: commands.Bot,
+        subscriber_uid: Optional[str] = None,
+        guild_id: Optional[int] = None,
+    ):
         super().__init__(title="Manual Post - Paste Event / Message")
         self.platforms = platforms
         self.manager = manager
         self.bot = bot
         self.subscriber_uid = subscriber_uid
+        self.guild_id = guild_id
         self.message_input = discord.ui.TextInput(
             label="Paste Event or Post Text",
             placeholder="Paste the event text or message to dispatch.",
@@ -1089,9 +1136,14 @@ class ManualPostModal(discord.ui.Modal):
             platform = Platform.from_str(platform_name)
             if platform == Platform.UNKNOWN:
                 continue
-            if notifier.send_raw_message(platform, content, subscriber_uid=self.subscriber_uid):
+            if notifier.send_raw_message(
+                platform,
+                content,
+                subscriber_uid=self.subscriber_uid,
+                guild_id=self.guild_id,
+            ):
                 sent_any = True
-        message = "Manual post dispatched." if sent_any else "No personal routes are configured for the selected platform(s)."
+        message = "Manual post dispatched." if sent_any else "No routes are configured for the selected platform(s) in this server."
         await interaction.response.send_message(message, ephemeral=True)
 
 
@@ -1116,8 +1168,8 @@ class ActionSelect(discord.ui.Select):
             discord.SelectOption(label="Clear All Webhooks", value="clear_webhooks", description="Remove all webhook URLs for selected platform(s)", emoji="🧹"),
             discord.SelectOption(label="Reset All Routes", value="clear_all", description="Wipe both channels & webhooks for selected platform(s)", emoji="🗑️"),
             discord.SelectOption(label="Grant Access", value="grant_access", description="Grant full dashboard access to a user by ID or username", emoji="🔑"),
-            discord.SelectOption(label="Revoke Access", value="revoke_access", description="Remove a subscriber's dashboard access by user ID", emoji="🔒"),
-                discord.SelectOption(label="List Subscribers", value="list_subscribers", description="View active subscribers and expiration details", emoji="👥"),
+            discord.SelectOption(label="Revoke Access", value="revoke_access", description="Remove a user's dashboard access by ID", emoji="🔒"),
+            discord.SelectOption(label="List Authorized Users", value="list_subscribers", description="View users with granted dashboard access", emoji="👥"),
         ]
         super().__init__(
             placeholder="⚙️ Step 2: Choose Routing or Source Action for Selected Platform(s)...",
@@ -1133,12 +1185,13 @@ class ActionSelect(discord.ui.Select):
         manager = self.view.manager
         uid = str(interaction.user.id)
         is_owner = manager.is_owner(uid)
+        guild_id = self.view.guild_id
 
         if action == "add_channel":
-            modal = AddChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = AddChannelModal(selected_platforms, manager, self.view)
             await interaction.response.send_modal(modal)
         elif action == "remove_channel":
-            modal = RemoveChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = RemoveChannelModal(selected_platforms, manager, self.view)
             await interaction.response.send_modal(modal)
         elif action == "bind_current":
             channel_id = interaction.channel_id
@@ -1147,30 +1200,27 @@ class ActionSelect(discord.ui.Select):
                 if interaction.guild and interaction.channel
                 else f"Channel {channel_id}"
             )
-            if is_owner:
-                for plat in selected_platforms:
-                    manager.add_channel(plat, channel_id, channel_label)
-            else:
-                for plat in selected_platforms:
-                    manager.add_subscriber_channel(uid, plat, channel_id, channel_label)
-                if interaction.guild_id is not None:
-                    manager.set_subscriber_guild(uid, interaction.guild_id)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
+            if guild_id is None:
+                await interaction.response.send_message("Open the dashboard inside a server to bind a server destination.", ephemeral=True)
+                return
+            for plat in selected_platforms:
+                manager.add_guild_channel(guild_id, plat, channel_id, channel_label)
+            new_embed = create_dashboard_embed(manager, interaction.client, guild_id=guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.view)
             await interaction.followup.send(
                 f"✅ Bound **{channel_label}** (<#{channel_id}>) to **{', '.join(selected_platforms)}**!",
                 ephemeral=True
             )
         elif action == "add_webhook":
-            modal = AddWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = AddWebhookModal(selected_platforms, manager, self.view)
             await interaction.response.send_modal(modal)
         elif action == "remove_webhook":
-            modal = RemoveWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = RemoveWebhookModal(selected_platforms, manager, self.view)
             await interaction.response.send_modal(modal)
         elif action == "add_source":
             if not is_owner:
                 await interaction.response.send_message(
-                    "Source management is owner-controlled so one subscriber cannot change monitoring for others.",
+                    "Source management is owner-controlled; event sources are shared bot-wide.",
                     ephemeral=True
                 )
                 return
@@ -1184,7 +1234,7 @@ class ActionSelect(discord.ui.Select):
         elif action == "remove_source":
             if not is_owner:
                 await interaction.response.send_message(
-                    "Source management is owner-controlled so one subscriber cannot change monitoring for others.",
+                    "Source management is owner-controlled; event sources are shared bot-wide.",
                     ephemeral=True
                 )
                 return
@@ -1197,62 +1247,54 @@ class ActionSelect(discord.ui.Select):
             if not selected_platforms:
                 await interaction.response.send_message("❌ Please select at least one platform first.", ephemeral=True)
                 return
-            modal = ManualPostModal(selected_platforms, manager, interaction.client, None if is_owner else uid)
+            modal = ManualPostModal(selected_platforms, manager, interaction.client, guild_id=guild_id)
             await interaction.response.send_modal(modal)
         elif action == "test_route":
             await interaction.response.defer(ephemeral=True)
             notifier = DiscordNotifier(dashboard_manager=manager, bot_client=interaction.client)
-            sent_count = 0
-            for plat_name in selected_platforms:
-                plat_enum = Platform.from_str(plat_name)
-                if plat_enum == Platform.UNKNOWN:
-                    continue
-                test_item = SAMPLE_TEST_ITEMS.get(plat_enum)
-                if test_item is None:
-                    test_item = BonusCodeItem(
-                        code=f"{plat_enum.name}_DASHBOARD_TEST",
-                        platform=plat_enum,
-                        amount_value="Dashboard test notification",
-                        wager_requirement="Not specified",
-                        source_url=AFFILIATE_SIGNUP_LINKS.get(plat_enum.value, "https://example.com"),
-                        source_name="Dashboard route test",
-                        is_affiliate=False,
-                        description=f"[TEST EVENT] Route test for {plat_enum.value}.",
-                    )
-                if notifier.send_notification(test_item, subscriber_uid=None if is_owner else uid):
-                    sent_count += 1
+            def dispatch_test_routes():
+                dispatched = 0
+                for plat_name in selected_platforms:
+                    plat_enum = Platform.from_str(plat_name)
+                    if plat_enum == Platform.UNKNOWN:
+                        continue
+                    test_item = SAMPLE_TEST_ITEMS.get(plat_enum)
+                    if test_item is None:
+                        test_item = BonusCodeItem(
+                            code=f"{plat_enum.name}_DASHBOARD_TEST",
+                            platform=plat_enum,
+                            amount_value="Dashboard test notification",
+                            wager_requirement="Not specified",
+                            source_url=AFFILIATE_SIGNUP_LINKS.get(plat_enum.value, "https://example.com"),
+                            source_name="Dashboard route test",
+                            is_affiliate=False,
+                            description=f"[TEST EVENT] Route test for {plat_enum.value}.",
+                        )
+                    if notifier.send_notification(test_item, guild_id=guild_id):
+                        dispatched += 1
+                return dispatched
+
+            sent_count = await asyncio.to_thread(dispatch_test_routes)
             await interaction.followup.send(
-                f"🧪 Test notification dispatched for **{sent_count} / {len(selected_platforms)} platform(s)** across all configured channels and webhooks!",
+                f"🧪 Test notification delivered for **{sent_count} / {len(selected_platforms)} platform(s)** across configured routes.",
                 ephemeral=True
             )
         elif action == "clear_channels":
             for plat in selected_platforms:
-                if is_owner:
-                    manager.clear_channels(plat)
-                else:
-                    manager.clear_subscriber_channels(uid, plat)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
+                manager.clear_guild_routes(guild_id, plat, "channels")
+            new_embed = create_dashboard_embed(manager, interaction.client, guild_id=guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.view)
             await interaction.followup.send(f"🗑️ Cleared all channels for **{', '.join(selected_platforms)}**.", ephemeral=True)
         elif action == "clear_webhooks":
-            if is_owner:
-                for plat in selected_platforms:
-                    manager.clear_webhooks(plat)
-            else:
-                for plat in selected_platforms:
-                    manager.clear_subscriber_webhooks(uid, plat)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
+            for plat in selected_platforms:
+                manager.clear_guild_routes(guild_id, plat, "webhooks")
+            new_embed = create_dashboard_embed(manager, interaction.client, guild_id=guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.view)
             await interaction.followup.send(f"🗑️ Cleared all webhooks for **{', '.join(selected_platforms)}**.", ephemeral=True)
         elif action == "clear_all":
-            if is_owner:
-                for plat in selected_platforms:
-                    manager.clear_routes(plat)
-            else:
-                for plat in selected_platforms:
-                    manager.clear_subscriber_channels(uid, plat)
-                    manager.clear_subscriber_webhooks(uid, plat)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
+            for plat in selected_platforms:
+                manager.clear_guild_routes(guild_id, plat)
+            new_embed = create_dashboard_embed(manager, interaction.client, guild_id=guild_id)
             await interaction.response.edit_message(embeds=new_embed, view=self.view)
             await interaction.followup.send(f"🧹 Reset all routes for **{', '.join(selected_platforms)}**.", ephemeral=True)
         elif action == "grant_access":
@@ -1263,11 +1305,11 @@ class ActionSelect(discord.ui.Select):
             await interaction.response.send_modal(modal)
         elif action == "list_subscribers":
             if not _has_admin_access(interaction.user) and not manager.is_owner(interaction.user.id):
-                await interaction.response.send_message("❌ Only the project owner or server admins can view subscribers.", ephemeral=True)
+                await interaction.response.send_message("❌ Only the project owner or server admins can view authorized users.", ephemeral=True)
                 return
             subscribers = manager.get_subscribers()
             embed = discord.Embed(
-                title=f"👥 {BOT_NAME} - Active Subscribers",
+                title=f"👥 {BOT_NAME} - Authorized Users",
                 description="Dashboard access and expiration details.",
                 color=0x1475E1
             )
@@ -1296,9 +1338,10 @@ class DashboardView(discord.ui.View):
     Interactive Enterprise Control Panel View featuring Multi-Select Platform Dropdown,
     Action Dropdown, and Quick Action buttons.
     """
-    def __init__(self, manager: DashboardManager, timeout: Optional[float] = 600):
+    def __init__(self, manager: DashboardManager, guild_id: Optional[int] = None, timeout: Optional[float] = 600):
         super().__init__(timeout=timeout)
         self.manager = manager
+        self.guild_id = guild_id
         primary_options, extra_options = _platform_select_options()
         self.platform_select_primary = PlatformMultiSelect(primary_options, row=0)
         self.platform_select_extra = PlatformMultiSelect(extra_options, row=1)
@@ -1313,15 +1356,20 @@ class DashboardView(discord.ui.View):
             embed = create_unauthorized_embed()
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
-        uid = str(interaction.user.id)
-        self.subscriber_uid = None if self.manager.is_owner(uid) else uid
+        if self.guild_id is None or interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This dashboard is scoped to the server where it was opened. Run `/dashboard` inside that server.",
+                ephemeral=True,
+            )
+            return False
+        self.subscriber_uid = None
         return True
 
     @discord.ui.button(label="⚡ Toggle Monitor", style=discord.ButtonStyle.success, row=3, emoji="🟢")
     async def btn_toggle_monitor(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
+        if not self.manager.is_owner(interaction.user.id):
             await interaction.response.send_message(
-                "Monitoring is managed by the bot owner. Your subscriber dashboard controls personal routes only.",
+                "Monitoring is shared bot-wide and can only be toggled by the project owner. Your server routes remain independent.",
                 ephemeral=True
             )
             return
@@ -1335,16 +1383,16 @@ class DashboardView(discord.ui.View):
             elif not new_state and interaction.client.background_monitor_task.is_running():
                 interaction.client.background_monitor_task.cancel()
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, guild_id=self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self)
         state_str = "ENABLED 🟢" if new_state else "PAUSED 🔴"
         await interaction.followup.send(f"Real-time monitoring is now **{state_str}**.", ephemeral=True)
 
     @discord.ui.button(label="⏱️ Interval", style=discord.ButtonStyle.secondary, row=3, emoji="⚙️")
     async def btn_set_interval(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
+        if not self.manager.is_owner(interaction.user.id):
             await interaction.response.send_message(
-                "Polling interval is managed by the bot owner. Your personal routes remain independent.",
+                "The polling interval is shared bot-wide and can only be changed by the project owner.",
                 ephemeral=True
             )
             return
@@ -1364,9 +1412,9 @@ class DashboardView(discord.ui.View):
 
     @discord.ui.button(label="➕ Add Source", style=discord.ButtonStyle.primary, row=4, emoji="➕")
     async def btn_add_source(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
+        if not self.manager.is_owner(interaction.user.id):
             await interaction.response.send_message(
-                "Source management is owner-controlled so one subscriber cannot change monitoring for others.",
+                "Event sources are shared bot-wide and can only be managed by the project owner.",
                 ephemeral=True
             )
             return
@@ -1381,13 +1429,13 @@ class DashboardView(discord.ui.View):
 
     @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=4)
     async def btn_refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
+        new_embed = create_dashboard_embed(self.manager, interaction.client, guild_id=self.guild_id)
         await interaction.response.edit_message(embeds=new_embed, view=self)
 
     @discord.ui.button(label="📝 Submitted Codes", style=discord.ButtonStyle.primary, row=4, emoji="📝")
     async def btn_submitted_codes(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Opens the submitted-codes routing settings panel."""
-        modal = SubmittedCodesRoutingModal(self.manager, self, self.subscriber_uid)
+        modal = SubmittedCodesRoutingModal(self.manager, self)
         await interaction.response.send_modal(modal)
 
 
@@ -1401,6 +1449,7 @@ class SubmittedCodesRoutingModal(discord.ui.Modal):
         self.manager = manager
         self.parent_view = parent_view
         self.subscriber_uid = subscriber_uid
+        self.guild_id = getattr(parent_view, "guild_id", None)
 
         self.platform_select = discord.ui.Select(
             label="Target Platform",
@@ -1447,11 +1496,11 @@ class SubmittedCodesRoutingModal(discord.ui.Modal):
         channel_id = self.channel_input.value.strip() if self.channel_input.value else None
         webhook_url = self.webhook_input.value.strip() if self.webhook_input.value else None
 
-        if self.subscriber_uid:
+        if self.guild_id is not None:
             if channel_id and channel_id.isdigit():
-                self.manager.add_subscriber_channel(self.subscriber_uid, platform, int(channel_id))
+                self.manager.add_guild_channel(self.guild_id, platform, int(channel_id))
             if webhook_url:
-                self.manager.add_subscriber_webhook(self.subscriber_uid, platform, webhook_url)
+                self.manager.add_guild_webhook(self.guild_id, platform, webhook_url)
         else:
             if channel_id and channel_id.isdigit():
                 self.manager.set_channel(platform, int(channel_id))
@@ -1922,11 +1971,15 @@ class EmbedEditorView(discord.ui.View):
     @discord.ui.button(label="🧪 Post Test", style=discord.ButtonStyle.success, row=2)
     async def btn_post_test(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        success, msg = post_test_embed(self.interaction.client, self.template)
-        if success:
-            await interaction.followup.send(f"✅ Test embed posted! ({msg})", ephemeral=True)
-        else:
-            await interaction.followup.send(f"⚠️ Failed to post: {msg}", ephemeral=True)
+        success, msg = await post_test_embed(
+            self.interaction.client,
+            self.template,
+            self.platform,
+        )
+        await interaction.followup.send(
+            f"✅ {msg}" if success else f"⚠️ {msg}",
+            ephemeral=True,
+        )
 
     @discord.ui.button(label="🔄 Reset", style=discord.ButtonStyle.danger, row=2)
     async def btn_reset(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1969,52 +2022,102 @@ class EmbedEditorView(discord.ui.View):
         await interaction.followup.send("🗑️ Changes discarded.", ephemeral=True)
 
 
-def post_test_embed(bot_client, template: Dict[str, Any]) -> tuple:
-    manager = EmbedTemplateManager()
-    embed_dict = manager.template_to_embed_dict(template)
+async def post_test_embed(
+    bot_client,
+    template: Dict[str, Any],
+    platform: str,
+    dashboard_manager: Optional[DashboardManager] = None,
+) -> Tuple[bool, str]:
+    """Posts a template preview to the selected platform's configured routes."""
+    platform_enum = Platform.from_str(platform)
+    if platform_enum == Platform.UNKNOWN:
+        return False, "Cannot test an unknown platform template."
+
+    manager = dashboard_manager or DashboardManager()
+    webhooks = manager.get_webhooks(platform_enum)
+    channels = manager.get_channels(platform_enum)
+    total_routes = len(webhooks) + len(channels)
+    if not total_routes:
+        return False, f"No routes are configured for {platform_enum.value}."
+
+    item = BonusCodeItem(
+        code="EMBED_PREVIEW",
+        platform=platform_enum,
+        amount_value="Template preview",
+        wager_requirement="N/A",
+        source_url="",
+        source_name="Embed Editor Preview",
+        is_affiliate=False,
+    )
+    embed_dict = EmbedTemplateManager().template_to_embed_dict(template)
     payload = {
         "username": BOT_NAME,
         "avatar_url": BOT_AVATAR_URL,
-        "embeds": [embed_dict]
+        "embeds": [embed_dict],
+        "components": DiscordNotifier.build_message_components(item),
     }
-    webhook_url = "https://discord.com/api/webhooks/1544995568810594328/-tHKfVnEUJow2BjIVdCsXa0J5s4QF5GONMXdKYzW4vg27CwJRBj3rSEHqOeXcdXNa8Bz"
-    try:
-        import requests
-        resp = requests.post(webhook_url, json=payload, timeout=10)
-        if resp.status_code in [200, 204]:
-            return True, "webhook"
-    except Exception as e:
-        logger.error(f"Webhook test post failed: {e}")
 
-    channel_id = 1460666123484794880
-    if bot_client and not bot_client.is_closed():
+    import requests
+
+    successes = 0
+    for webhook_url in webhooks:
         try:
-            import asyncio
-            import discord
-            async def _send():
+            response = await asyncio.to_thread(
+                requests.post,
+                webhook_url,
+                json=payload,
+                timeout=10,
+            )
+            if response.status_code in (200, 204):
+                successes += 1
+            else:
+                logger.warning(
+                    "Embed test webhook for %s returned HTTP %s.",
+                    platform_enum.value,
+                    response.status_code,
+                )
+        except requests.RequestException as exc:
+            logger.warning(
+                "Embed test webhook for %s failed (%s).",
+                platform_enum.value,
+                type(exc).__name__,
+            )
+
+    if channels and bot_client and not bot_client.is_closed():
+        for channel_id in channels:
+            try:
                 channel = bot_client.get_channel(channel_id)
                 if channel is None:
-                    try:
-                        channel = await bot_client.fetch_channel(channel_id)
-                    except Exception:
-                        return False
-                if channel:
-                    emb = discord.Embed.from_dict(embed_dict)
-                    await channel.send(embed=emb)
-                    return True
-                return False
-            try:
-                loop = getattr(bot_client, "loop", None)
-                if loop and loop.is_running():
-                    fut = asyncio.run_coroutine_threadsafe(_send(), loop)
-                    result = fut.result(timeout=15)
-                    if result:
-                        return True, "channel"
-            except Exception as e:
-                logger.error(f"Channel test post failed: {e}")
-        except Exception:
-            pass
-    return False, "no route available"
+                    channel = await asyncio.wait_for(
+                        bot_client.fetch_channel(channel_id),
+                        timeout=5,
+                    )
+                await asyncio.wait_for(
+                    channel.send(
+                        embed=discord.Embed.from_dict(embed_dict),
+                        view=DiscordNotifier.build_link_view(item),
+                    ),
+                    timeout=5,
+                )
+                successes += 1
+            except Exception as exc:
+                logger.warning(
+                    "Embed test channel dispatch to %s for %s failed: %s",
+                    channel_id,
+                    platform_enum.value,
+                    exc,
+                )
+    elif channels:
+        logger.warning(
+            "Embed test skipped %s configured channel(s) because the bot client is unavailable.",
+            len(channels),
+        )
+
+    if successes == total_routes:
+        return True, f"Test embed delivered to all {total_routes} configured {platform_enum.value} route(s)."
+    if successes:
+        return False, f"Partial delivery: {successes} of {total_routes} configured routes accepted the test embed."
+    return False, f"No test embeds were delivered across {total_routes} configured {platform_enum.value} route(s)."
 
 
 # ----------------------------------------------------
@@ -2102,9 +2205,9 @@ def run_discord_bot():
     async def _cleanup_old_slash_commands(bot):
         allowed_names = {
             "codes", "activecodes", "activeus", "activecom", "activecodescom", "activecodesall",
-            "help", "info", "commands", "links", "subscribe", "dashboard",
+            "help", "info", "commands", "links", "dashboard",
             "status", "startmonitor", "embed-editor", "post", "code", "codechecker",
-            "admin", "grant", "revoke", "subscribers",
+            "admin", "stats", "history",
         }
         cleaned = {"global": 0, "guilds": {}}
 
@@ -2146,8 +2249,8 @@ def run_discord_bot():
         print(f" ✅ {BOT_NAME} DISCORD BOT IS ONLINE & RUNNING", flush=True)
         print(f" Connected User: {bot.user} (ID: {bot.user.id})", flush=True)
         print(f" Realtime Monitor: {'ENABLED (Every ' + str(interval_secs) + 's)' if manager.get_setting('realtime_monitoring_enabled', True) else 'PAUSED'}", flush=True)
-        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /status, /startmonitor, /post, /code, /embed-editor, /admin", flush=True)
-        print(f" Prefix Commands: !codes, !activecodes, !activeus, !activecom, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
+        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /dashboard, /status, /stats, /history, /startmonitor, /post, /code, /embed-editor, /admin", flush=True)
+        print(f" Prefix Commands: !codes, !activecodes, !activeus, !activecom, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !dashboard, !startmonitor, !status, !stats, !history, !post, !code, !admin", flush=True)
         print(f"==================================================================\n", flush=True)
 
         # Full command sync: clear old commands and sync current tree
@@ -2257,17 +2360,18 @@ def run_discord_bot():
                 "• `/help` — Commands and dashboard guide.\n"
                 "• `/commands` — List all available commands.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Inquire about premium dashboard access.\n"
-                "• `/dashboard` — Personal routing dashboard for your labeled server channels and webhooks."
+                "• `/stats [days]` and `/history` — View this server's drop analytics and recent history.\n"
+                "• `/dashboard` — Manage platform routes and test notifications in this server."
             ),
             inline=False
         )
         embed.add_field(
-            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
+            name="🔒 Admin Commands (Owner / Server Admin / Authorized User)",
             value=(
                 "• `/startmonitor` — Start background real-time scanner.\n"
                 "• `/status` — View real-time monitor status, interval, and database counts.\n"
-                "• `/dashboard` — Full platform routing panel. Add each channel/webhook with a label; selectors cover all supported platforms.\n"
+                "• `/stats [days]` and `/history` — View this server's delivery-aware analytics and recent drops.\n"
+                "• `/dashboard` — Select platform(s), then add/remove labeled channels or webhooks, test routes, manage sources, and adjust monitoring settings.\n"
                 "• `/code` or `!code` — Validate and broadcast a bonus code to your authorized routes.\n"
                 "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
                 "• `/embed-editor` — View and edit embed formats for each platform."
@@ -2278,8 +2382,8 @@ def run_discord_bot():
             name="👥 Admin Management (Owner / Server Admin)",
             value=(
                 "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
-                "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
-                "• `/admin subscribers` — List all active subscribers with expiration info.\n"
+                "• `/admin revoke <user_id>` — Revoke dashboard access.\n"
+                "• `/admin users` — List users with dashboard access.\n"
                 "• `/admin` — Unified admin management panel."
             ),
             inline=False
@@ -2287,7 +2391,7 @@ def run_discord_bot():
         embed.add_field(
             name="💬 Community",
             value=(
-                f"DM <@{OWNER_USER_ID}> to inquire about premium dashboard access.\n"
+                "Dashboard routes are managed by this server's administrators.\n"
                 f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
             ),
             inline=False
@@ -2306,7 +2410,7 @@ def run_discord_bot():
         """Standalone /commands command — lists all available commands."""
         embed = discord.Embed(
             title=f"📋 {BOT_NAME} — Available Commands",
-            description="Use slash commands or their prefix forms where available.\n🔒 Restricted dashboard actions require owner, subscriber, or server-admin access.",
+            description="Use slash commands or their prefix forms where available.\n🔒 Dashboard configuration is available to server administrators and users granted access by the project owner.",
             color=0x1475E1
         )
         embed.add_field(
@@ -2320,17 +2424,18 @@ def run_discord_bot():
                 "• `/info` — What the bot monitors and supported platforms.\n"
                 "• `/help` — Commands and dashboard guide.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Inquire about premium dashboard access.\n"
-                "• `/dashboard` — Configure labeled platform channels and webhooks."
+                "• `/stats [days]` and `/history` — View this server's drop analytics and recent history.\n"
+                "• `/dashboard` — Manage platform routes and test notifications in this server."
             ),
             inline=False
         )
         embed.add_field(
-            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
+            name="🔒 Admin Commands (Owner / Server Admin / Authorized User)",
             value=(
                 "• `/startmonitor` — Start background real-time scanner.\n"
                 "• `/status` — View real-time monitor status, interval, and database counts.\n"
-                "• `/dashboard` — Full interactive multi-platform control panel.\n"
+                "• `/stats [days]` and `/history` — View this server's delivery-aware analytics and recent drops.\n"
+                "• `/dashboard` — Add/remove labeled channel IDs or webhooks per platform, test routes, manage sources, and adjust monitoring settings.\n"
                 "• `/code` or `!code` — Validate and broadcast a bonus code to authorized routes.\n"
                 "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
                 "• `/embed-editor` — View and edit embed formats for each platform."
@@ -2341,27 +2446,21 @@ def run_discord_bot():
             name="👥 Admin Management (Owner / Server Admin)",
             value=(
                 "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
-                "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
-                "• `/admin subscribers` — List all active subscribers with expiration info.\n"
-                "• `/grant`, `/revoke`, `/subscribers` — Standalone aliases for the above."
+                "• `/admin revoke <user_id>` — Revoke dashboard access.\n"
+                "• `/admin users` — List users with dashboard access.\n"
+                "Use `/admin grant`, `/admin revoke`, and `/admin users` to manage dashboard access."
             ),
             inline=False
         )
         embed.add_field(
             name="💬 Community",
             value=(
-                f"DM <@{OWNER_USER_ID}> to inquire about premium dashboard access.\n"
+                "Dashboard routes are managed by this server's administrators.\n"
                 f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
             ),
             inline=False
         )
         embed.set_footer(text=f"{BOT_NAME} • Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
-        await ctx.send(embed=embed)
-
-    @bot.hybrid_command(name="subscribe", with_app_command=True, description="Inquire about premium dashboard access")
-    async def cmd_subscribe(ctx: commands.Context):
-        """Standalone /subscribe command — premium access inquiry."""
-        embed = create_subscribe_embed()
         await ctx.send(embed=embed)
 
     @bot.hybrid_command(name="links", with_app_command=True, description="View all affiliate/signup links for every platform")
@@ -2376,16 +2475,21 @@ def run_discord_bot():
     async def cmd_dashboard(ctx: commands.Context):
         """
         Opens the interactive enterprise visual control panel with drop down menus.
-        Public users see affiliate links and a subscribe prompt.
-        Restricted to Owner, active $2 crypto subscribers, server administrators, and @admin role users for full admin controls.
+        Each server's routes are managed independently by its administrators.
         """
+        if ctx.guild is None:
+            await ctx.send(
+                "Run `/dashboard` inside a Discord server to manage that server's platform destinations.",
+                ephemeral=ctx.interaction is not None,
+            )
+            return
+
         is_auth = manager.is_authorized(ctx.author.id) or _has_admin_access(ctx.author)
 
         if is_auth:
             uid = str(ctx.author.id)
-            is_owner = manager.is_owner(uid)
-            embeds = create_dashboard_embed(manager, bot, subscriber_uid=None if is_owner else uid)
-            view = DashboardView(manager)
+            embeds = create_dashboard_embed(manager, bot, guild_id=ctx.guild.id)
+            view = DashboardView(manager, ctx.guild.id)
             await ctx.send(embeds=embeds, view=view)
         else:
             embed = create_public_dashboard_embed()
@@ -2412,6 +2516,112 @@ def run_discord_bot():
         embed.add_field(name="⏱️ Polling Interval", value=f"`{interval} seconds`", inline=True)
         embed.add_field(name="📦 Total Tracked Codes", value=f"`{len(all_tracked)} codes`", inline=True)
         embed.add_field(name="🎛️ Dashboard", value="Type `/dashboard` or `!dashboard` to open interactive controls.", inline=False)
+        await ctx.send(embed=embed)
+
+    @bot.hybrid_command(
+        name="stats",
+        with_app_command=True,
+        description="Show drop counts, sources, peak hours, and delivery status",
+    )
+    async def cmd_stats(ctx: commands.Context, days: int = 7):
+        if days < 1 or days > 365:
+            await ctx.send(
+                "Choose a reporting period from 1 to 365 days.",
+                ephemeral=ctx.interaction is not None,
+            )
+            return
+        from drop_analytics import get_store
+
+        guild_id = ctx.guild.id if ctx.guild else None
+        stats = await asyncio.to_thread(get_store().get_stats, days, guild_id)
+        embed = discord.Embed(
+            title=f"📊 Drop Statistics — Last {days} Days",
+            description=(
+                f"Guild-specific history for **{ctx.guild.name}**."
+                if ctx.guild
+                else "Bot-wide drop history."
+            ),
+            color=0x1475E1,
+        )
+        embed.add_field(name="🎁 Recorded drops", value=str(stats["total_drops"]), inline=True)
+        embed.add_field(
+            name="✅ Successful deliveries",
+            value=str(stats["delivered_notifications"]),
+            inline=True,
+        )
+        embed.add_field(
+            name="⚠️ Failed attempts",
+            value=str(stats["failed_notifications"]),
+            inline=True,
+        )
+        platform_lines = [
+            f"• {platform}: **{count}**"
+            for platform, count in stats["platform_breakdown"][:10]
+        ]
+        embed.add_field(
+            name="Drops by platform",
+            value="\n".join(platform_lines) or "No drops recorded in this period.",
+            inline=True,
+        )
+        source_lines = [
+            f"• {source[:70]}: **{count}**"
+            for source, count in stats["source_leaderboard"][:10]
+        ]
+        embed.add_field(
+            name="Top sources",
+            value="\n".join(source_lines) or "No source data available.",
+            inline=True,
+        )
+        peak_hour = max(
+            stats["hourly_heatmap"].items(),
+            key=lambda row: row[1],
+            default=None,
+        )
+        embed.add_field(
+            name="Peak drop hour",
+            value=f"{peak_hour[0]} ({peak_hour[1]} drops)" if peak_hour else "No timestamps available.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Reported value",
+            value=f"{stats['reported_value_count']} drops include a reported reward value.",
+            inline=False,
+        )
+        await ctx.send(embed=embed)
+
+    @bot.hybrid_command(
+        name="history",
+        with_app_command=True,
+        description="Show recent drops from the last 36 hours",
+    )
+    async def cmd_history(ctx: commands.Context):
+        from datetime import datetime, timedelta, timezone
+        from drop_analytics import get_store
+
+        guild_id = ctx.guild.id if ctx.guild else None
+        stats = await asyncio.to_thread(get_store().get_stats, 2, guild_id)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
+        recent = []
+        for row in stats["recent_history"]:
+            try:
+                first_seen = datetime.fromisoformat(row["first_seen_at"].replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                continue
+            if first_seen >= cutoff:
+                recent.append(row)
+        lines = [
+            f"**{row['platform']}** — `{row['code']}`"
+            + (f" • {row['amount_value'][:50]}" if row["amount_value"] else "")
+            + f" • {(row['source_name'] or 'Unknown source')[:80]}"
+            for row in recent[:12]
+        ]
+        embed = discord.Embed(
+            title="🕘 Recent Drop History — 36 Hours",
+            description="\n".join(lines) or "No drops recorded in the last 36 hours.",
+            color=0x1475E1,
+        )
+        if ctx.guild:
+            embed.set_footer(text=f"History for {ctx.guild.name}")
         await ctx.send(embed=embed)
 
     @bot.hybrid_command(name="startmonitor", with_app_command=True, description="Start real-time bonus code monitoring")
@@ -2555,11 +2765,18 @@ def run_discord_bot():
         return embed
 
     class ManualPostModal(discord.ui.Modal):
-        def __init__(self, platforms: List[str], manager: DashboardManager, bot: commands.Bot):
+        def __init__(
+            self,
+            platforms: List[str],
+            manager: DashboardManager,
+            bot: commands.Bot,
+            guild_id: Optional[int] = None,
+        ):
             super().__init__(title="Manual Post — Paste Event / Message")
             self.platforms = platforms
             self.manager = manager
             self.bot = bot
+            self.guild_id = guild_id
 
             self.message_input = discord.ui.TextInput(
                 label="Paste Event or Post Text",
@@ -2581,7 +2798,7 @@ def run_discord_bot():
             for plat_name in self.platforms:
                 try:
                     plat_enum = Platform.from_str(plat_name)
-                    success = notifier.send_raw_message(plat_enum, content)
+                    success = notifier.send_raw_message(plat_enum, content, guild_id=self.guild_id)
                     if success:
                         sent_any = True
                         logger.info(f"Manual post dispatched to {plat_name} by {interaction.user}")
@@ -2595,10 +2812,17 @@ def run_discord_bot():
                 await interaction.response.send_message("⚠️ No routes available for the selected platform(s). Configure channels/webhooks via `/dashboard`.", ephemeral=True)
 
     class ManualPostView(discord.ui.View):
-        def __init__(self, manager: DashboardManager, bot: commands.Bot, timeout: Optional[float] = 300):
+        def __init__(
+            self,
+            manager: DashboardManager,
+            bot: commands.Bot,
+            guild_id: Optional[int] = None,
+            timeout: Optional[float] = 300,
+        ):
             super().__init__(timeout=timeout)
             self.manager = manager
             self.bot = bot
+            self.guild_id = guild_id
             self.selected_platforms: List[str] = []
 
             self.platform_select = discord.ui.Select(
@@ -2630,7 +2854,7 @@ def run_discord_bot():
                     discord.SelectOption(label="YAYCASINO", description="YAYCASINO Platform", emoji="🎉"),
                     discord.SelectOption(label="WINNA", description="WINNA Platform", emoji="🏆"),
                     discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined", emoji="🎰"),
-                    discord.SelectOption(label="Default", description="Default / Global Fallback", emoji="🌐"),
+                    discord.SelectOption(label="Default", description="Default fallback within this server", emoji="🌐"),
                 ],
                 row=0
             )
@@ -2654,7 +2878,9 @@ def run_discord_bot():
             if not self.selected_platforms:
                 await interaction.response.send_message("Please select at least one platform first.", ephemeral=True)
                 return
-            modal = self.bot.get_cog("ManualPostModal") or ManualPostModal(self.selected_platforms, self.manager, self.bot)
+            modal = self.bot.get_cog("ManualPostModal") or ManualPostModal(
+                self.selected_platforms, self.manager, self.bot, self.guild_id
+            )
             await interaction.response.send_modal(modal)
 
 
@@ -2662,14 +2888,18 @@ def run_discord_bot():
     async def slash_post(interaction: discord.Interaction):
         """
         Opens an interactive manual post form with platform selection and text input.
-        Restricted to owner, subscribers, server admins, and @admin role.
+        Restricted to the project owner, authorized users, server admins, and @admin role.
         """
         if not manager.is_authorized(interaction.user.id) and not _has_admin_access(interaction.user):
             embed = create_unauthorized_embed()
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        view = ManualPostView(manager, interaction.client)
+        if interaction.guild_id is None:
+            await interaction.response.send_message("Run `/post` inside the server you want to send to.", ephemeral=True)
+            return
+
+        view = ManualPostView(manager, interaction.client, interaction.guild_id)
         embed = discord.Embed(
             title="📝 Manual Post — Broadcast to Platform Channels",
             description=(
@@ -2688,8 +2918,14 @@ def run_discord_bot():
         Manually submit a bonus code for validation and broadcast.
         Usage: !code <platform> <code> or !code <code>
         Example: !code Stake.us UIJXBQUS
-        Restricted to owner, active subscribers, and server admins.
+        Restricted to owner, authorized users, and server admins.
         """
+        if ctx.guild is None:
+            await ctx.send(
+                "Run `/code` inside the server you want the notification sent to.",
+                ephemeral=ctx.interaction is not None,
+            )
+            return
         if not manager.is_authorized(ctx.author.id) and not _has_admin_access(ctx.author):
             embed = create_unauthorized_embed()
             await ctx.send(embed=embed)
@@ -2777,6 +3013,9 @@ def run_discord_bot():
             await ctx.send(f"⚠️ Code `{c_clean}` for **{platform.value}** has already been submitted/tracked.")
             return
 
+        if ctx.interaction and not ctx.interaction.response.is_done():
+            await ctx.defer(ephemeral=True)
+
         validation_result = None
         if platform in (
             Platform.STAKE_US,
@@ -2785,7 +3024,7 @@ def run_discord_bot():
             Platform.STAKE_US_VIP_NOTICES,
             Platform.STAKE_COM_VIP_NOTICES,
         ):
-            validation_result = code_validator.validate(c_clean, platform)
+            validation_result = await asyncio.to_thread(code_validator.validate, c_clean, platform)
             status = validation_result.get("status", "UNKNOWN")
             if status == "FULLY_CLAIMED":
                 await ctx.send(
@@ -2811,7 +3050,7 @@ def run_discord_bot():
             is_owner = manager.is_owner(ctx.author.id)
             is_admin = _has_admin_access(ctx.author)
             if not is_owner and not is_admin:
-                is_active = poller.verify_code_active(c_clean, platform)
+                is_active = await asyncio.to_thread(poller.verify_code_active, c_clean, platform)
                 if not is_active:
                     await ctx.send(f"❌ Code `{c_clean}` is not currently active on **{platform.value}**. Please verify the code and try again.")
                     return
@@ -2833,13 +3072,16 @@ def run_discord_bot():
         )
 
         notifier = DiscordNotifier(dashboard_manager=manager, bot_client=bot)
-        sent = notifier.send_notification(item)
-        tracker.mark_seen(item)
+        sent = await asyncio.to_thread(notifier.send_notification, item, guild_id=ctx.guild.id)
 
         if sent:
+            tracker.mark_seen(item)
             await ctx.send(f"✅ Successfully submitted and dispatched **{platform.value}** bonus code: `{c_clean}`")
         else:
-            await ctx.send(f"✅ Code `{c_clean}` marked as seen for **{platform.value}**, but no Discord routes are configured to broadcast it.")
+            await ctx.send(
+                f"❌ Code `{c_clean}` for **{platform.value}** was not delivered and was not marked as seen. "
+                "Check the dashboard routes and try again."
+            )
 
     @bot.tree.command(name="embed-editor", description="View and edit embed formats for each platform")
     async def slash_embed_editor(interaction: discord.Interaction):
@@ -2859,20 +3101,20 @@ def run_discord_bot():
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     # ----------------------------------------------------
-    # Admin Command Group (Consolidated: grant, revoke, subscribers)
+    # Admin Command Group (Consolidated: grant, revoke, users)
     # ----------------------------------------------------
     # ----------------------------------------------------
-    # Admin Command Group (Consolidated: grant, revoke, subscribers)
+    # Admin Command Group (Consolidated: grant, revoke, users)
     # ----------------------------------------------------
-    @bot.group(name="admin", with_app_command=True, description="Admin management commands: grant, revoke, and subscriber listing")
+    @bot.hybrid_group(name="admin", with_app_command=True, description="Manage dashboard access grants")
     async def admin_group(ctx: commands.Context):
         if not ctx.invoked_subcommand:
             embed = discord.Embed(
                 title="Admin Management",
                 description="Available admin commands:\n"
                             "• `/admin grant <user_id>` — Grant dashboard access\n"
-                            "• `/admin revoke <user_id>` — Revoke subscriber access\n"
-                            "• `/admin subscribers` — List all active subscribers",
+                            "• `/admin revoke <user_id>` — Revoke dashboard access\n"
+                            "• `/admin users` — List authorized users",
                 color=0x1475E1
             )
             await ctx.send(embed=embed)
@@ -2891,7 +3133,7 @@ def run_discord_bot():
         manager.add_subscriber(uid, note=note, role="subscriber", duration=duration)
         await ctx.send(f"Granted full dashboard access to {uid} ({note}) - Duration: {duration}.", ephemeral=True)
 
-    @admin_group.command(name="revoke", description="Revoke subscriber dashboard access from a user (owner/admin only)")
+    @admin_group.command(name="revoke", description="Revoke dashboard access from a user (owner/admin only)")
     async def admin_revoke(ctx: commands.Context, user_id: str):
         if not manager.is_owner(ctx.author.id) and not _has_admin_access(ctx.author):
             embed = create_unauthorized_embed()
@@ -2905,38 +3147,37 @@ def run_discord_bot():
         if removed:
             await ctx.send(f"Revoked dashboard access from {uid}.", ephemeral=True)
         else:
-            await ctx.send(f"User {uid} is not a subscriber or is the owner.", ephemeral=True)
+            await ctx.send(f"User {uid} has no dashboard access or is the owner.", ephemeral=True)
 
-    @admin_group.command(name="subscribers", description="List all active subscribers with expiration info (owner only)")
-    async def admin_subscribers(ctx: commands.Context):
+    @admin_group.command(name="users", aliases=["subscribers"], description="List users with dashboard access (owner only)")
+    async def admin_users(ctx: commands.Context):
         if not manager.is_owner(ctx.author.id):
             embed = create_unauthorized_embed()
             await ctx.send(embed=embed, ephemeral=True)
             return
 
-        subscribers = manager.get_subscribers()
-        if not subscribers:
-            await ctx.send("No active subscribers found.", ephemeral=True)
+        authorized_users = manager.get_subscribers()
+        if not authorized_users:
+            await ctx.send("No users currently have dashboard access.", ephemeral=True)
             return
 
         embed = discord.Embed(
-            title=f"{BOT_NAME} - Active Subscribers",
-            description="List of all subscribers with expiration info.",
+            title=f"{BOT_NAME} - Authorized Users",
+            description="Users with granted dashboard access and expiration details.",
             color=0x1475E1
         )
-        for uid, data in subscribers.items():
+        for uid, data in authorized_users.items():
             duration = data.get("duration", "lifetime")
             expires = data.get("expires_at", "Never")
-            role = data.get("role", "subscriber")
             active = "Active" if data.get("active", False) else "Inactive"
             note = data.get("note", "")
             granted = data.get("granted_at", "Unknown")
             embed.add_field(
                 name=f"<@{uid}> ({uid})",
-                value=f"**Status:** {active}\n**Role:** {role}\n**Duration:** {duration}\n**Expires:** {expires}\n**Granted:** {granted}\n**Note:** {note}",
+                value=f"**Status:** {active}\n**Duration:** {duration}\n**Expires:** {expires}\n**Granted:** {granted}\n**Note:** {note}",
                 inline=False
             )
-        embed.set_footer(text=f"{BOT_NAME} - Subscriber Management", icon_url=BOT_AVATAR_URL)
+        embed.set_footer(text=f"{BOT_NAME} - Dashboard Access", icon_url=BOT_AVATAR_URL)
         await ctx.send(embed=embed)
 
     # ----------------------------------------------------
@@ -2981,17 +3222,18 @@ def run_discord_bot():
                 elif c_upper.startswith("STAKECOM"):
                     platform = Platform.STAKE_COM
 
+            await interaction.response.defer(ephemeral=True)
+
             # Validate code
             status = "UNKNOWN"
             bonus_val = "N/A"
             wager = "N/A"
             claims = "N/A"
-            redeem_url = ""
 
             try:
                 if platform in (Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE):
                     validator = StakeCodeValidator()
-                    result = validator.validate(code, platform)
+                    result = await asyncio.to_thread(validator.validate, code, platform)
                     status = result.get("status", "UNKNOWN")
                     bonus_val = result.get("bonusValue", "N/A") or "N/A"
                     wager = result.get("wagerRequirement", "N/A") or "N/A"
@@ -3001,20 +3243,6 @@ def run_discord_bot():
             except Exception as e:
                 logger.error(f"Code checker validation error: {e}")
                 status = "ERROR"
-
-            # Build claim URL
-            if platform == Platform.STAKE_US:
-                redeem_url = f"https://stake.us/?c={code}"
-            elif platform == Platform.STAKE_COM:
-                redeem_url = f"https://stake.com/?c={code}"
-            elif platform == Platform.DEGEN:
-                redeem_url = f"https://degen.com/r/selfmade"
-            elif platform == Platform.RAINBET:
-                redeem_url = f"https://rainbet.com/?r=murphy"
-            elif platform == Platform.QZINO:
-                redeem_url = f"https://qzino.ai/?r=SELFMADE"
-            else:
-                redeem_url = "https://stake.com/?c=SELFMADE"
 
             status_emoji = {
                 "ACTIVE": "🟢",
@@ -3032,16 +3260,25 @@ def run_discord_bot():
             checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
             checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
             checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
-            checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE TO CLAIM]({rede_url})", inline=False)
-            checker_embed.add_field(name="💬 Community", value=f"[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", inline=True)
-            kick_url = "https://www.kick.com/moonbootmurphy" if platform == Platform.RAINBET else "https://www.kick.com/traystrees50"
-            checker_embed.add_field(name="🎥 Watch on Kick", value=f"[KICK]({kick_url})", inline=True)
             checker_embed.set_footer(text=f"{BOT_NAME} • Code Checker")
+            button_item = BonusCodeItem(
+                code=code,
+                platform=platform,
+                amount_value=bonus_val,
+                wager_requirement=wager,
+                source_url="",
+                source_name="Code Checker",
+                is_affiliate=False,
+            )
 
             # Save backup
             save_backup("code_check", platform.value if platform != Platform.UNKNOWN else "unknown", code, f"status={status}")
 
-            await interaction.response.send_message(embed=checker_embed, ephemeral=True)
+            await interaction.followup.send(
+                embed=checker_embed,
+                view=DiscordNotifier.build_link_view(button_item),
+                ephemeral=True,
+            )
 
     @bot.tree.command(name="codechecker", description="Check a bonus code status (Active/Expired) with instant claim link")
     async def slash_codechecker(interaction: discord.Interaction):
@@ -3089,12 +3326,11 @@ def run_discord_bot():
         bonus_val = "N/A"
         wager = "N/A"
         claims = "N/A"
-        redeem_url = ""
 
         try:
             if platform in (Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE):
                 validator = StakeCodeValidator()
-                result = validator.validate(code_str, platform)
+                result = await asyncio.to_thread(validator.validate, code_str, platform)
                 status = result.get("status", "UNKNOWN")
                 bonus_val = result.get("bonusValue", "N/A") or "N/A"
                 wager = result.get("wagerRequirement", "N/A") or "N/A"
@@ -3104,20 +3340,6 @@ def run_discord_bot():
         except Exception as e:
             logger.error(f"Code checker validation error: {e}")
             status = "ERROR"
-
-        # Build claim URL
-        if platform == Platform.STAKE_US:
-            redeem_url = f"https://stake.us/?c={code_str}"
-        elif platform == Platform.STAKE_COM:
-            redeem_url = f"https://stake.com/?c={code_str}"
-        elif platform == Platform.DEGEN:
-            redeem_url = "https://degen.com/r/selfmade"
-        elif platform == Platform.RAINBET:
-            redeem_url = "https://rainbet.com/?r=murphy"
-        elif platform == Platform.QZINO:
-            redeem_url = "https://qzino.ai/?r=SELFMADE"
-        else:
-            redeem_url = "https://stake.com/?c=SELFMADE"
 
         status_emoji = {
             "ACTIVE": "🟢",
@@ -3135,16 +3357,21 @@ def run_discord_bot():
         checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
         checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
         checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
-        checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE TO CLAIM]({rede_url})", inline=False)
-        checker_embed.add_field(name="💬 Community", value=f"[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", inline=True)
-        kick_url = "https://www.kick.com/moonbootmurphy" if platform == Platform.RAINBET else "https://www.kick.com/traystrees50"
-        checker_embed.add_field(name="🎥 Watch on Kick", value=f"[KICK]({kick_url})", inline=True)
         checker_embed.set_footer(text=f"{BOT_NAME} - Code Checker")
+        button_item = BonusCodeItem(
+            code=code_str,
+            platform=platform,
+            amount_value=bonus_val,
+            wager_requirement=wager,
+            source_url="",
+            source_name="Code Checker",
+            is_affiliate=False,
+        )
 
         # Save backup
         save_backup("code_check", platform.value if platform != Platform.UNKNOWN else "unknown", code_str, f"status={status}")
 
-        await ctx.send(embed=checker_embed)
+        await ctx.send(embed=checker_embed, view=DiscordNotifier.build_link_view(button_item))
 
     try:
         bot.run(DISCORD_BOT_TOKEN, log_handler=None)

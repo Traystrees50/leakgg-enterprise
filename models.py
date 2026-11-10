@@ -236,6 +236,15 @@ class Platform(str, Enum):
         }
         return urls.get(self, "https://stake.com")
 
+    @property
+    def logo_url(self) -> str:
+        """Return the platform's official site favicon for use as an embed thumbnail."""
+        if self == Platform.UNKNOWN:
+            return ""
+        if self == Platform.DUAL_STAKE:
+            return "https://stake.us/favicon.ico"
+        return f"{self.base_url.rstrip('/')}/favicon.ico"
+
 @dataclass
 class BonusCodeItem:
     code: str
@@ -257,6 +266,39 @@ class BonusCodeItem:
     description: Optional[str] = None
     event_datetime: Optional[datetime] = None
     detected_at: str = field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+    @property
+    def notification_title(self) -> str:
+        if self.is_highroller:
+            event = "High Roller Code"
+            emoji = "🔥"
+        elif self.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
+            event = "VIP Notice"
+            emoji = "👑"
+        elif self.event_type == "WEEKLY BOOST":
+            event = "Weekly Boost"
+            emoji = "🎉"
+        elif self.event_type == "MONTHLY BONUS":
+            event = "Monthly Bonus"
+            emoji = "💰"
+        elif self.event_type == "VIP EVENT":
+            event = "VIP Event"
+            emoji = "👑"
+        elif self.event_type == "AFFILIATE":
+            event = "Partner Bonus"
+            emoji = "🎁"
+        else:
+            event = "Bonus Code"
+            emoji = "🎁"
+
+        platform_name = (
+            "Stake.us & Stake.com"
+            if self.is_dual_stake or self.platform == Platform.DUAL_STAKE
+            else self.platform.value
+        )
+        if self.platform == Platform.UNKNOWN:
+            return f"{emoji} New {event}"
+        return f"{emoji} {platform_name} — {event}"
 
     @property
     def clean_code(self) -> str:
