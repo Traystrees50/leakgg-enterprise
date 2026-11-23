@@ -2155,7 +2155,7 @@ def run_discord_bot():
         print(f" ✅ {BOT_NAME} DISCORD BOT IS ONLINE & RUNNING", flush=True)
         print(f" Connected User: {bot.user} (ID: {bot.user.id})", flush=True)
         print(f" Realtime Monitor: {'ENABLED (Every ' + str(interval_secs) + 's)' if manager.get_setting('realtime_monitoring_enabled', True) else 'PAUSED'}", flush=True)
-        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /tools, /status, /startmonitor, /post, /code, /embed-editor, /admin, /vip, /weekly, /monthly, /rakeback, /dice98, /convert", flush=True)
+        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /tools, /status, /startmonitor, /post, /code, /embed-editor, /admin, /vip, /vip_calc, /vip_tiers, /weekly, /weekly_calc, /monthly, /monthly_calc, /rakeback, /set_tier, /my_tier, /dice98, /convert", flush=True)
         print(f" Prefix Commands: !codes, !activecodes, !activeus, !activecom, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
         print(f"==================================================================\n", flush=True)
 
@@ -2321,7 +2321,7 @@ def run_discord_bot():
         embed = create_info_embed()
         await ctx.send(embed=embed)
 
-    @bot.hybrid_command(name="commands", with_app_command=True, description="List all available Active Codes commands")
+    @bot.hybrid_command(name="commands", with_app_command=True, description="List monitoring and calculator commands")
     async def cmd_commands(ctx: commands.Context):
         """Standalone /commands command — lists all available commands."""
         embed = discord.Embed(
