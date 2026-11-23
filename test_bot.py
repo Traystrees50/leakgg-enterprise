@@ -2812,5 +2812,100 @@ Period: July 4 → July 11"""
                     self.assertEqual(len(items), 1)
                     self.assertEqual(items[0].code, "DEGENOCR123")
 
+
+class TestStakeCalculator(unittest.TestCase):
+    def test_vip_progress_accepts_percent_or_total_wagered(self):
+        from stake_calculator import calculate_vip_progress
+
+        by_percent = calculate_vip_progress("Bronze", progress_pct=50)
+        by_total = calculate_vip_progress("Bronze", total_wagered=30_000)
+
+        self.assertEqual(by_percent["progress_pct"], 50)
+        self.assertEqual(by_percent["remaining"], 20_000)
+        self.assertEqual(by_total["progress_pct"], 50)
+        self.assertEqual(by_total["remaining"], 20_000)
+
+    def test_vip_progress_handles_top_tier_and_rejects_invalid_tier(self):
+        from stake_calculator import calculate_vip_progress
+
+        self.assertEqual(calculate_vip_progress("Obsidian")["remaining"], 0)
+        with self.assertRaises(ValueError):
+            calculate_vip_progress("Unknown")
+
+    def test_bonus_estimates_and_invalid_values(self):
+        from stake_calculator import estimate_monthly_bonus, estimate_weekly_bonus
+
+        self.assertEqual(estimate_weekly_bonus("Bronze", 10_000)["likely"], 7)
+        self.assertEqual(estimate_monthly_bonus("Bronze", 10_000)["likely"], 28)
+        with self.assertRaises(ValueError):
+            estimate_weekly_bonus("Bronze", -1)
+        with self.assertRaises(ValueError):
+            estimate_monthly_bonus("Bronze", float("nan"))
+
+    def test_rakeback_and_dice_calculator_validate_inputs(self):
+        from stake_calculator import convert_currency, dice98_calculator, estimate_rakeback
+
+        self.assertAlmostEqual(estimate_rakeback(10_000)["rakeback"], 3.5)
+        self.assertEqual(dice98_calculator(10_000, bankroll=200)["recommended_bet"], 1.02)
+        self.assertEqual(convert_currency(1, "usd", "gc")["result"], 2_000_000)
+        with self.assertRaises(ValueError):
+            estimate_rakeback(100, edge=1.1)
+        with self.assertRaises(ValueError):
+            dice98_calculator(100, bet_count=0)
+        with self.assertRaises(ValueError):
+            convert_currency(float("inf"), "usd", "gc")
+
+    def test_commands_register_on_existing_bot(self):
+        import discord
+        from discord.ext import commands
+        from stake_calculator import register_stake_calculator_commands
+
+        bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+        register_stake_calculator_commands(bot)
+        command_names = {command.name for command in bot.tree.get_commands()}
+
+        self.assertTrue({
+            "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
+            "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers", "tools",
+        }.issubset(command_names))
+
+    def test_dashboard_views_are_persistent_and_preselect_saved_tier(self):
+        import discord
+        from stake_dashboard import (
+            _BonusToolView,
+            _ToolsCategoryView,
+            _ToolsMainMenuView,
+            _VipProgressView,
+        )
+
+        views = [
+            _ToolsMainMenuView(),
+            _ToolsCategoryView("vip"),
+            _ToolsCategoryView("bonus"),
+            _ToolsCategoryView("other"),
+            _VipProgressView("Gold"),
+            _BonusToolView("Weekly", "Gold"),
+        ]
+        for view in views:
+            self.assertIsNone(view.timeout)
+            self.assertTrue(all(item.custom_id for item in view.children))
+
+        vip_select = next(item for item in views[4].children if isinstance(item, discord.ui.Select))
+        default_tiers = [option.value for option in vip_select.options if option.default]
+        self.assertEqual(default_tiers, ["Gold"])
+
+    def test_preferred_tier_persistence_uses_configured_file(self):
+        import stake_calculator
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            preferences_file = os.path.join(temporary_directory, "user_prefs.json")
+            with patch.object(stake_calculator, "PREFERENCES_FILE", Path(preferences_file)):
+                stake_calculator._save_preference(123, "Gold")
+                self.assertEqual(
+                    stake_calculator._load_preferences()["123"]["tier"],
+                    "Gold",
+                )
+
 if __name__ == "__main__":
     unittest.main()

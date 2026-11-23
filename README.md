@@ -109,11 +109,17 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 | `/commands` / `!commands` | 🌐 Public | Hybrid | Lists all currently available commands with descriptions and affiliate links. |
 | `/help` / `!help` | 🌐 Public | Hybrid | Displays comprehensive bot guide, usage instructions, and platform registration links. |
 | `/dashboard` / `!dashboard` | 🔒 Owner / Admin / Subscriber | Hybrid | Opens the interactive enterprise control panel with platform & action dropdown menus. |
+| `/tools` | 🌐 Public | Slash | Opens the interactive tools dashboard for VIP, bonus, and conversion calculators. |
 | `/startmonitor` / `!startmonitor` | 🔒 Owner / Admin / Subscriber | Hybrid | Starts background real-time monitoring sweeps across all sources. |
+| `/vip` / `/vip_calc` / `/vip_tiers` | 🌐 Public | Slash | Show VIP progress estimates and the tier ladder. |
+| `/weekly` / `/weekly_calc` / `/monthly` / `/monthly_calc` | 🌐 Public | Slash | Estimate weekly or monthly bonuses using community formulas. |
+| `/rakeback` / `/dice98` / `/convert` | 🌐 Public | Slash | Estimate rakeback or wagering figures, and convert USD/SC and GC. |
+| `/set_tier` / `/my_tier` | 🌐 Public | Slash | Save or view your preferred VIP tier. |
 
 > **Access Levels:**
 > - 🌐 **Public** — Available to all users and server members.
 > - 🔒 **Owner / Admin / Subscriber** — Restricted to the project owner (`traystrees50`), server administrators, users with an `@admin` role, and active $2 crypto subscribers.
+> Calculator results are community estimates, not official Stake formulas or guarantees. Gambling outcomes are random and may result in losses.
 
 ---
 

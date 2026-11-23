@@ -125,6 +125,9 @@ def create_info_embed() -> discord.Embed:
             "• `/activecom` — Stake.com codes only.\n"
             "• `/codes [platform]` — Query active codes with an optional platform filter.\n"
             "• `/dashboard` — Configure labeled platform channels and webhooks.\n"
+            "• `/tools` — Interactive VIP, bonus, wagering, and currency tools dashboard.\n"
+            "• `/vip`, `/vip_calc`, `/vip_tiers`, `/set_tier`, `/my_tier` — VIP tools and tier preferences.\n"
+            "• `/weekly`, `/weekly_calc`, `/monthly`, `/monthly_calc`, `/rakeback`, `/dice98`, `/convert` — Calculator shortcuts.\n"
             "• `/help`, `/commands`, `/links`, `/subscribe` — Help, command list, links, and access information."
         ),
         inline=False
@@ -2040,6 +2043,9 @@ def run_discord_bot():
         heartbeat_timeout=120,
         max_messages=50,
     )
+    from stake_calculator import register_stake_calculator_commands
+
+    register_stake_calculator_commands(bot)
     manager = DashboardManager()
     tracker = CodeTracker()
     notifier = DiscordNotifier(dashboard_manager=manager, bot_client=bot)
@@ -2105,6 +2111,9 @@ def run_discord_bot():
             "help", "info", "commands", "links", "subscribe", "dashboard",
             "status", "startmonitor", "embed-editor", "post", "code", "codechecker",
             "admin", "grant", "revoke", "subscribers",
+            "tools",
+            "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
+            "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers",
         }
         cleaned = {"global": 0, "guilds": {}}
 
@@ -2138,7 +2147,7 @@ def run_discord_bot():
             status=discord.Status.online,
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
-                name="Leaked.GG bonus codes | /dashboard"
+                name="Leaked.GG bonus codes | /tools"
             )
         )
         logger.info(f"{BOT_NAME} Discord Bot connected as {bot.user} (ID: {bot.user.id})")
@@ -2146,7 +2155,7 @@ def run_discord_bot():
         print(f" ✅ {BOT_NAME} DISCORD BOT IS ONLINE & RUNNING", flush=True)
         print(f" Connected User: {bot.user} (ID: {bot.user.id})", flush=True)
         print(f" Realtime Monitor: {'ENABLED (Every ' + str(interval_secs) + 's)' if manager.get_setting('realtime_monitoring_enabled', True) else 'PAUSED'}", flush=True)
-        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /status, /startmonitor, /post, /code, /embed-editor, /admin", flush=True)
+        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /tools, /status, /startmonitor, /post, /code, /embed-editor, /admin, /vip, /weekly, /monthly, /rakeback, /dice98, /convert", flush=True)
         print(f" Prefix Commands: !codes, !activecodes, !activeus, !activecom, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
         print(f"==================================================================\n", flush=True)
 
@@ -2255,10 +2264,21 @@ def run_discord_bot():
                 "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
                 "• `/info` — What the bot monitors and supported platforms.\n"
                 "• `/help` — Commands and dashboard guide.\n"
+                "• `/tools` — Open the VIP, bonus, and conversion tools dashboard.\n"
                 "• `/commands` — List all available commands.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
                 "• `/subscribe` — Inquire about premium dashboard access.\n"
                 "• `/dashboard` — Personal routing dashboard for your labeled server channels and webhooks."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🎲 Calculator Commands",
+            value=(
+                "• `/vip`, `/vip_calc`, `/vip_tiers` — VIP progress and tier ladder.\n"
+                "• `/weekly`, `/weekly_calc`, `/monthly`, `/monthly_calc` — Bonus estimates.\n"
+                "• `/rakeback`, `/dice98`, `/convert` — Rakeback, wagering, and currency estimates.\n"
+                "• `/set_tier`, `/my_tier` — Save or view your preferred tier."
             ),
             inline=False
         )
@@ -2319,9 +2339,20 @@ def run_discord_bot():
                 "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
                 "• `/info` — What the bot monitors and supported platforms.\n"
                 "• `/help` — Commands and dashboard guide.\n"
+                "• `/tools` — Open the VIP, bonus, and conversion tools dashboard.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
                 "• `/subscribe` — Inquire about premium dashboard access.\n"
                 "• `/dashboard` — Configure labeled platform channels and webhooks."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🎲 Calculator Commands",
+            value=(
+                "• `/vip`, `/vip_calc`, `/vip_tiers` — VIP progress and tier ladder.\n"
+                "• `/weekly`, `/weekly_calc`, `/monthly`, `/monthly_calc` — Bonus estimates.\n"
+                "• `/rakeback`, `/dice98`, `/convert` — Rakeback, wagering, and currency estimates.\n"
+                "• `/set_tier`, `/my_tier` — Save or view your preferred tier."
             ),
             inline=False
         )
