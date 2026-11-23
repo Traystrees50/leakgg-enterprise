@@ -1054,6 +1054,386 @@ class TelegramScraper:
             description=strip_promo_footer(clean_text) if clean_text else f"Bonus drop for {platform.value}"
         )
 
+    # ==================== NEW PLATFORM PARSERS ====================
+
+    def parse_goated_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse Goated.com bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["GOATED", "BONUS", "CLAIM", "DROP", "DROPS", "CODE", "HERE", "NOW", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"GOATED_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "Goated Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.GOATED, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@goated",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://goated.com/r/selfmade",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_pulsz_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse PULSZ bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["PULSZ", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE", "GC", "SC"]:
+                code = candidate
+        if not code:
+            code = f"PULSZ_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "PULSZ Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.PULSZ, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@pulsz",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://www.pulsz.com/?invited_by=ga1vnk",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_modo_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse MODO bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["MODO", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"MODO_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "MODO Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.MODO, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@modo",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://modo.us/?referralCode=Z901K9",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_baba_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse BABA Casino bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["BABA", "BABACASINO", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"BABA_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "BABA Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.BABA, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@baba",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://play.babacasino.com/#/?referral_id=5403a829ac9926527b94e7c068708e07&inv_referral=true&fb_source=invite",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_cooked_us_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse COOKED.US bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["COOKED", "COOKEDUS", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"COOKEDUS_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "COOKED.US Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.COOKED_US, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@cookedus",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://cooked.us/?auth=register&referral_source=SELFMADE",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_cooked_com_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse COOKED.COM bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["COOKED", "COOKEDCOM", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"COOKEDCOM_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "COOKED.COM Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.COOKED_COM, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@cookedcom",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://cooked.com/?auth=register&referral_source=SELFMADE",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_wowvegas_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse WOWVEGAS bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["WOWVEGAS", "WOW", "VEGAS", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"WOWVEGAS_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "WOWVEGAS Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.WOWVEGAS, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@wowvegas",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://www.wowvegas.com/?raf=1274028",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_yaycasino_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse YAYCASINO bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["YAYCASINO", "YAY", "CASINO", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"YAYCASINO_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "YAYCASINO Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.YAYCASINO, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@yaycasino",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_myprize_us_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse MYPRIZE.US bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["MYPRIZE", "MYPRIZEUS", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"MYPRIZEUS_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "MYPRIZE.US Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.MYPRIZE_US, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@myprizeus",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://myprize.us/invite/Traystrees50",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_crowncoins_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse CrownCoins bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["CROWNCOINS", "CROWN", "COINS", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"CROWNCOINS_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "CrownCoins Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.CROWNSCOINS, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@crowncoins",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_realprize_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse RealPrize bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["REALPRIZE", "REAL", "PRIZE", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"REALPRIZE_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "RealPrize Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.REALPRIZE, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@realprize",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://www.realprize.com/refer/212990",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_acebet_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse AceBet Casino bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["ACEBET", "ACE", "BET", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"ACEBET_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "AceBet Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.ACEBET, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@acebet",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://acebet.cc/welcome/r/selfmade",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_lonestar_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse LoneStar Casino bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["LONESTAR", "LONE", "STAR", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"LONESTAR_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "LoneStar Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.LONESTAR, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@lonestar",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://lonestarcasino.com/refer/869128",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
+    def parse_chanced_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
+        """Parse Chanced Casino bonus drops"""
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code = ""
+        code_m = _RE_CODE_GENERIC.search(text)
+        if code_m:
+            candidate = code_m.group(1).strip()
+            if candidate.upper() not in ["CHANCED", "CHANCE", "D", "BONUS", "CLAIM", "DROP", "CODE", "HERE", "FREE"]:
+                code = candidate
+        if not code:
+            code = f"CHANCED_{msg_id}"
+        
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else "Chanced Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+        
+        return BonusCodeItem(
+            code=code, platform=Platform.CHANCED, amount_value=val, wager_requirement=wager,
+            claims_count=claims, source_url=msg_url, source_name="@chanced",
+            is_affiliate=False, image_url=image_url,
+            custom_redeem_link="https://chanced.com/c/v5a5yh",
+            event_datetime=event_datetime, description=strip_promo_footer(text[:400])
+        )
+
     def parse_stake_message(self, text: str, msg_url: str, channel_name: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
         """
         Parses drops and VIP events from Telegram channels:
@@ -1287,6 +1667,34 @@ class TelegramScraper:
                 item = self._parse_stake_com_only_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
             elif "qzino" in clean_name.lower() or "qzinodotai" in clean_name.lower():
                 item = self.parse_qzino_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "goated" in clean_name.lower():
+                item = self.parse_goated_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "pulsz" in clean_name.lower():
+                item = self.parse_pulsz_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "modo" in clean_name.lower():
+                item = self.parse_modo_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "baba" in clean_name.lower() or "babacasino" in clean_name.lower():
+                item = self.parse_baba_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "cookedus" in clean_name.lower() or "cooked.us" in clean_name.lower():
+                item = self.parse_cooked_us_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "cookedcom" in clean_name.lower() or "cooked.com" in clean_name.lower():
+                item = self.parse_cooked_com_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "wowvegas" in clean_name.lower():
+                item = self.parse_wowvegas_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "yaycasino" in clean_name.lower():
+                item = self.parse_yaycasino_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "myprize" in clean_name.lower() and "us" in clean_name.lower():
+                item = self.parse_myprize_us_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "crowncoins" in clean_name.lower():
+                item = self.parse_crowncoins_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "realprize" in clean_name.lower():
+                item = self.parse_realprize_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "acebet" in clean_name.lower():
+                item = self.parse_acebet_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "lonestar" in clean_name.lower():
+                item = self.parse_lonestar_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "chanced" in clean_name.lower():
+                item = self.parse_chanced_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
             else:
                 # Fallback for private channels and unknown sources - use stake parser but strict
                 item = self.parse_stake_message(msg_text, msg_url, clean_name, img_url, event_datetime=msg_dt)

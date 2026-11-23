@@ -9,6 +9,7 @@ from scrapers.sources import SiteScraper
 from scrapers.telegram import TelegramScraper
 from scrapers.stakestats import StakeStatsPoller
 from scrapers.codestats import CodeStatsScraper
+from scrapers.enhanced_sources import scrape_all_new_sources
 from tracker import CodeTracker
 from discord_notifier import DiscordNotifier
 from dashboard_manager import DashboardManager
@@ -224,6 +225,14 @@ class ScraperEngine:
             logger.error(f"Error during CodeStats check: {e}")
             return []
 
+    def fetch_enhanced_sources_candidates(self) -> List[BonusCodeItem]:
+        """Scrape enhanced sources: EddiesCodes, Codez.gg, StakeCodeClaimer, AnyTimeShuffle, BrokeChubb, GreasyFork"""
+        try:
+            return scrape_all_new_sources()
+        except Exception as e:
+            logger.error(f"Error during enhanced sources check: {e}")
+            return []
+
     def run_web_check(self, notify: bool = True, max_workers: int = 6) -> List[BonusCodeItem]:
         """
         Scrapes configured web review sources concurrently for affiliate promotional codes.
@@ -273,6 +282,7 @@ class ScraperEngine:
         2. Telegram Drop Channels
         3. CodeStats.gg Feeds
         4. Target Web Affiliate Review Pages
+        5. Enhanced Sources (EddiesCodes, Codez.gg, StakeCodeClaimer, AnyTimeShuffle, BrokeChubb, GreasyFork)
         Newly detected bonus drops are posted immediately to Discord in real-time as each source returns.
         """
         logger.info("Starting real-time multi-source bonus code monitoring sweep...")
@@ -303,14 +313,20 @@ class ScraperEngine:
         def run_web():
             return self.fetch_web_candidates(on_site_items=stream_items)
 
+        def run_enhanced():
+            items = self.fetch_enhanced_sources_candidates()
+            stream_items(items)
+            return items
+
         tasks = [
             ("StakeStats", run_stakestats),
             ("Telegram", run_telegram),
             ("CodeStats", run_codestats),
             ("WebReviews", run_web),
+            ("EnhancedSources", run_enhanced),
         ]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             future_to_name = {executor.submit(func): name for name, func in tasks}
             for future in concurrent.futures.as_completed(future_to_name):
                 name = future_to_name[future]
