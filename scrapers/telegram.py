@@ -33,8 +33,22 @@ _RE_CODE_HASH = re.compile(r"\b(stake(?:com|us)[a-z0-9]{6,25})\b", re.I)
 _RE_CODE_RAINBET = re.compile(r"(?:Click\s+Code\s+To\s+Copy|Code)[:\s]+([A-Za-z0-9_\-]+)", re.I)
 _RE_CODE_QZINO_STANDALONE = re.compile(r"\n\s*([A-Za-z0-9]{4,16})\s*\n\s*-\s*(?:Value|Total|Requirement)", re.I)
 _RE_VALUE_GENERIC = re.compile(r"(?:Claim\s*Amount|Amount|Reward|Value)[:\s]+(\$?[0-9.,]+(?:\s*USD|\s*SC|\%)?(?:\s*\+\s*\d+\s*FS)?)", re.I)
+_RE_VALUE_RAINBET = re.compile(
+    r"(?:claim\s*amount|reward(?:\s*amount)?|amount|value|"
+    r"bonus(?:\s*(?:amount|value))?|drop(?:\s*(?:amount|value))?|"
+    r"prize(?:\s*(?:amount|value))?)\s*(?:[:=-]\s*|\s+)"
+    r"((?:(?:US)?[$€£]\s*)?\d[\d,]*(?:\.\d+)?"
+    r"\s*(?:USD|SC|GC|FS|%)?"
+    r"(?:\s*\+\s*\d[\d,]*(?:\.\d+)?\s*(?:USD|SC|GC|FS|%)?)*"
+    r")",
+    re.I,
+)
+_RE_VALUE_RAINBET_DROP = re.compile(
+    r"([$€£]\s*\d[\d,]*(?:\.\d+)?)\s*(?:instant\s+)?drop\b",
+    re.I,
+)
 _RE_WAGER_GENERIC = re.compile(
-    r"(?:7\s*[- ]?\s*day\s*wager\s*requirement|wager\s*requirement|wager\s*required|"
+    r"(?:7\s*[- ]?\s*day\s*wager\s*requirement|wager\s*requirement|wager\s*required|wagered|"
     r"wager|requirement|playthrough)[:\s-]+"
     r"((?:[$€£]\s*)?\d[\d,]*(?:\.\d+)?\s*(?:x|SC|GC|USD|sweeps|stake cash)?"
     r"(?:\s+(?:wagered|wager|rollover|playthrough))?)",
@@ -54,6 +68,20 @@ _PROMO_FOOTER_MARKERS = [
     "Use code JIM on Winna:",
     "JimmyMoney.gg",
 ]
+
+_RAINBET_CONFUSABLES = str.maketrans({
+    "А": "A", "а": "a", "В": "B", "в": "b", "С": "C", "с": "c",
+    "Е": "E", "е": "e", "Н": "H", "н": "h", "І": "I", "і": "i",
+    "Ј": "J", "ј": "j", "К": "K", "к": "k", "М": "M", "м": "m",
+    "О": "O", "о": "o", "Р": "P", "р": "p", "Ѕ": "S", "ѕ": "s",
+    "Т": "T", "т": "t", "Х": "X", "х": "x", "У": "Y", "у": "y",
+})
+
+
+def _normalize_rainbet_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).translate(_RAINBET_CONFUSABLES)
+    return "".join(char for char in normalized if unicodedata.category(char) != "Cf")
+
 
 def strip_promo_footer(text: str) -> str:
     if not text:
@@ -226,26 +254,38 @@ class TelegramScraper:
         1. Click Code To Copy: MFQP3DSN
         2. Redeem Here: https://rainbet.com/affiliates?modal=wallet&tab=redeem
         Reward: $1 / $10
+        Bonus, Prize, and Drop Amount labels are also recognized.
         Wager Required: $4,000
         Claims: 600
         """
         code_match = _RE_CODE_RAINBET.search(text)
         if not code_match:
-            code_match = _RE_CODE_STANDALONE.search(text)
-        if not code_match:
             return None
 
         code = code_match.group(1).strip()
-        if code.upper() in ["RAINBET", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "WALLET"]:
+        # Block common false positives
+        if code.upper() in {"RAINBET", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "WALLET", "JUST", "COPY", "CODE", "THE", "AND", "FOR", "YOUR", "THIS", "WITH", "FROM", "GET", "USE", "NOW", "NEW", "FREE", "PLAY", "WIN", "CLAIM", "LINK", "URL", "HTTP", "HTTPS", "WWW", "COM", "RAINBET.COM"}:
+            return None
+        # Rainbet codes are typically 6+ chars (alphanumeric or all letters)
+        if len(code) < 6:
             return None
 
-        reward_m = _RE_VALUE_GENERIC.search(text)
-        reward = reward_m.group(1).strip() if reward_m else "$1.00 Drop"
+        parse_text = _normalize_rainbet_text(text)
+        reward_m = (
+            _RE_VALUE_RAINBET.search(parse_text)
+            or _RE_VALUE_GENERIC.search(parse_text)
+            or _RE_VALUE_RAINBET_DROP.search(parse_text)
+        )
+        if reward_m:
+            reward = reward_m.group(1).strip()
+        else:
+            logger.warning("Rainbet code %s has no recognizable reward amount in %s", code, msg_url)
+            reward = "Amount not specified"
 
-        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager_m = _RE_WAGER_GENERIC.search(parse_text)
         wager = wager_m.group(1).strip() if wager_m else "Not specified"
 
-        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims_m = _RE_CLAIMS_GENERIC.search(parse_text)
         claims = claims_m.group(1).strip() if claims_m else None
 
         return BonusCodeItem(
@@ -266,12 +306,12 @@ class TelegramScraper:
     def parse_winna_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
         code_match = _RE_CODE_RAINBET.search(text)
         if not code_match:
-            code_match = _RE_CODE_STANDALONE.search(text)
-        if not code_match:
             return None
 
         code = code_match.group(1).strip()
-        if code.upper() in ["WINNA", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "CODE"]:
+        if code.upper() in {"WINNA", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "CODE", "JUST", "COPY", "THE", "AND", "FOR", "YOUR", "THIS", "WITH", "FROM", "GET", "USE", "NOW", "NEW", "FREE", "PLAY", "WIN", "CLAIM", "LINK"}:
+            return None
+        if len(code) < 6:
             return None
 
         reward_m = _RE_VALUE_GENERIC.search(text)
@@ -308,12 +348,12 @@ class TelegramScraper:
         """
         code_match = _RE_CODE_RAINBET.search(text)
         if not code_match:
-            code_match = _RE_CODE_STANDALONE.search(text)
-        if not code_match:
             return None
 
         code = code_match.group(1).strip()
-        if code.upper() in ["THRILL", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "CODE"]:
+        if code.upper() in {"THRILL", "BONUS", "DROP", "HERE", "REDEEM", "CLICK", "CODE", "JUST", "COPY", "THE", "AND", "FOR", "YOUR", "THIS", "WITH", "FROM", "GET", "USE", "NOW", "NEW", "FREE", "PLAY", "WIN", "CLAIM", "LINK"}:
+            return None
+        if len(code) < 6:
             return None
 
         reward_m = _RE_VALUE_GENERIC.search(text)
@@ -342,47 +382,221 @@ class TelegramScraper:
             description=clean_text
         )
 
-    def parse_gamba_message(
-        self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None
-    ) -> Optional[BonusCodeItem]:
-        """Parses only posts explicitly identified as GAMBA from the faircodes aggregator."""
-        source = urllib.parse.urlparse(msg_url)
-        path_parts = [part for part in source.path.split("/") if part]
-        if path_parts and path_parts[0].lower() == "s":
-            path_parts = path_parts[1:]
-        if source.hostname not in {"t.me", "www.t.me"} or not path_parts or path_parts[0].casefold() != "faircodes":
-            return None
-        if "gamba" not in text.lower():
+    def _parse_shuffle_only_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None, channel_name: str = "anyclaimershuffle") -> Optional[BonusCodeItem]:
+        """
+        Strict Shuffle-only parser for dedicated shuffle channels.
+        Only extracts Shuffle.us or Shuffle.com codes, rejects Stake codes.
+        """
+        t_upper = text.upper()
+        code_m = _RE_CODE_CODESTATS.search(text)
+        if not code_m:
+            code_m = re.search(r"\b([A-Z0-9]{6,16})\b", text)
+        if not code_m:
             return None
 
+        code = code_m.group(1).strip()
+        if code.upper() in ["SHUFFLE", "BONUS", "DROP", "CLAIM", "STAKE", "HERE", "CODE"]:
+            return None
+
+        # Determine Shuffle.us vs Shuffle.com
+        if "SHUFFLE.US" in t_upper or ("SHUFFLE" in t_upper and "US" in t_upper and "SC" in t_upper):
+            platform = Platform.SHUFFLE_US
+            default_val = "Shuffle.us Drop"
+        else:
+            platform = Platform.SHUFFLE_COM
+            default_val = "Shuffle.com Drop"
+
+        val_m = re.search(r"Value\s*:\s*([^\n]+)", text, re.I)
+        wager_m = re.search(r"(?:Requirements?|REQUIREMENTS?|7-DAY\s*WAGER|7-Day\s*Wager|Wager\s*Required|Wager)[\s:]+([^\n\r]+)", text, re.I)
+        claims_m = re.search(r"Claims?\s*:\s*([0-9,]+)", text, re.I)
+
+        return BonusCodeItem(
+            code=code,
+            platform=platform,
+            amount_value=val_m.group(1).strip() if val_m else default_val,
+            wager_requirement=wager_m.group(1).strip() if wager_m else "Not specified",
+            claims_count=claims_m.group(1).strip() if claims_m else None,
+            source_url=msg_url,
+            source_name=f"@{channel_name}",
+            is_affiliate=False,
+            image_url=image_url,
+            event_datetime=event_datetime,
+            description=strip_promo_footer(text.strip())
+        )
+
+    def _parse_stake_us_only_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None, channel_name: str = "highrollerscodeus") -> Optional[BonusCodeItem]:
+        """
+        Strict Stake.us-only parser for dedicated Stake.us channels.
+        Only extracts Stake.us codes, rejects Stake.com, Shuffle, etc.
+        """
+        t_upper = text.upper()
+        code_m = _RE_CODE_CODESTATS.search(text)
+        if not code_m:
+            code_m = re.search(r"(?:code|drop|redeem=)([A-Za-z0-9_\-]{4,25})", text, re.I)
+        if not code_m:
+            hash_m = _RE_CODE_HASH.search(text)
+            if hash_m:
+                code_m = hash_m
+        if not code_m:
+            return None
+
+        code = code_m.group(1).strip()
+        if code.upper() in ["ALERT", "BONUS", "DROP", "CLAIM", "STAKE", "HERE", "SHUFFLE"]:
+            return None
+
+        val_m = re.search(r"Value\s*:\s*([^\n\r]+)", text, re.I)
+        val = val_m.group(1).strip() if val_m else ""
+        if not val:
+            v_alt = re.search(r"(\$?\d+(?:\.\d+)?\s*(?:SC|Stake Cash|USD)?)", text, re.I)
+            val = v_alt.group(1).strip() if v_alt else "Stake.us Bonus Drop"
+
+        wager_m = re.search(r"(?:Requirements?|REQUIREMENTS?|7-DAY\s*WAGER|7-Day\s*Wager|Wager\s*Required|Wager)[\s:]+([^\n\r]+)", text, re.I)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+
+        claims_m = re.search(r"(?:Claim Limit|Total Drop Limit|Claims)\s*:\s*([^\n\r]+)", text, re.I)
+        claims = claims_m.group(1).strip() if claims_m else None
+
+        is_hr = (
+            "highroller" in channel_name.lower() or
+            "HIGH ROLLER" in t_upper or
+            "HIGHROLLER" in t_upper or
+            any(w in wager.lower() for w in ["50,000", "100,000", "200,000", "50000", "100000"]) or
+            any(v in val.lower() for v in ["$12.50", "$25", "$50", "$100", "12.50", "25 sc", "50 sc"])
+        )
+
+        return BonusCodeItem(
+            code=code,
+            platform=Platform.STAKE_US,
+            amount_value=val,
+            wager_requirement=wager,
+            claims_count=claims,
+            source_url=msg_url,
+            source_name=f"@{channel_name}",
+            is_affiliate=False,
+            is_highroller=is_hr,
+            is_dual_stake=False,
+            image_url=image_url,
+            event_datetime=event_datetime,
+            description=strip_promo_footer(text.strip())
+        )
+
+    def _parse_stake_com_only_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None, channel_name: str = "highrollerscode") -> Optional[BonusCodeItem]:
+        """
+        Strict Stake.com-only parser for dedicated Stake.com channels.
+        Only extracts Stake.com codes, rejects Stake.us, Shuffle, etc.
+        """
+        t_upper = text.upper()
+        code_m = _RE_CODE_CODESTATS.search(text)
+        if not code_m:
+            code_m = re.search(r"(?:code|drop|redeem=)([A-Za-z0-9_\-]{4,25})", text, re.I)
+        if not code_m:
+            hash_m = _RE_CODE_HASH.search(text)
+            if hash_m:
+                code_m = hash_m
+        if not code_m:
+            return None
+
+        code = code_m.group(1).strip()
+        if code.upper() in ["ALERT", "BONUS", "DROP", "CLAIM", "STAKE", "HERE", "SHUFFLE"]:
+            return None
+
+        val_m = re.search(r"Value\s*:\s*([^\n\r]+)", text, re.I)
+        val = val_m.group(1).strip() if val_m else ""
+        if not val:
+            v_alt = re.search(r"(\$?\d+(?:\.\d+)?\s*(?:SC|Stake Cash|USD)?)", text, re.I)
+            val = v_alt.group(1).strip() if v_alt else "Stake.com Bonus Drop"
+
+        wager_m = re.search(r"(?:Requirements?|REQUIREMENTS?|7-DAY\s*WAGER|7-Day\s*Wager|Wager\s*Required|Wager)[\s:]+([^\n\r]+)", text, re.I)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+
+        claims_m = re.search(r"(?:Claim Limit|Total Drop Limit|Claims)\s*:\s*([^\n\r]+)", text, re.I)
+        claims = claims_m.group(1).strip() if claims_m else None
+
+        is_hr = (
+            "highroller" in channel_name.lower() or
+            "HIGH ROLLER" in t_upper or
+            "HIGHROLLER" in t_upper or
+            any(w in wager.lower() for w in ["50,000", "100,000", "200,000", "50000", "100000"]) or
+            any(v in val.lower() for v in ["$12.50", "$25", "$50", "$100", "12.50", "25 sc", "50 sc"])
+        )
+
+        return BonusCodeItem(
+            code=code,
+            platform=Platform.STAKE_COM,
+            amount_value=val,
+            wager_requirement=wager,
+            claims_count=claims,
+            source_url=msg_url,
+            source_name=f"@{channel_name}",
+            is_affiliate=False,
+            is_highroller=is_hr,
+            is_dual_stake=False,
+            image_url=image_url,
+            event_datetime=event_datetime,
+            description=strip_promo_footer(text.strip())
+        )
+
+    def parse_aggregator_message(
+        self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None
+    ) -> Optional[BonusCodeItem]:
+        """
+        Multi-platform aggregator parser for channels like @faircodes.
+        Detects the real platform from message text using Platform.from_str,
+        then routes to the correct specialized parser or a clean generic fallback.
+        """
+        if not text and not image_url:
+            return None
+
+        platform = Platform.from_str(text)
+
+        # Route to specialized parsers where they exist
+        if platform == Platform.RAINBET:
+            return self.parse_rainbet_message(text, msg_url, image_url, event_datetime)
+        if platform == Platform.DEGEN:
+            return self.parse_degen_message(text, msg_url, image_url, event_datetime)
+        if platform == Platform.QZINO:
+            return self.parse_qzino_message(text, msg_url, image_url, event_datetime, channel_name="faircodes")
+        if platform in (Platform.WINNA,):
+            return self.parse_winna_message(text, msg_url, image_url, event_datetime)
+        if platform == Platform.THRILL:
+            return self.parse_thrill_message(text, msg_url, image_url, event_datetime)
+        if platform in (
+            Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE,
+            Platform.STAKE_US_VIP_NOTICES, Platform.STAKE_COM_VIP_NOTICES,
+            Platform.SHUFFLE_US, Platform.SHUFFLE_COM,
+        ):
+            return self.parse_stake_message(text, msg_url, "faircodes", image_url, event_datetime)
+
+        # Generic fallback for all other detected platforms
         code_match = _RE_CODE_GENERIC.search(text)
         if not code_match:
             code_match = re.search(
                 r"(?:^|\n)\s*(?:code|promo code|drop code)\s*[:\-]\s*([A-Za-z0-9_-]{4,35})",
-                text,
-                re.I,
+                text, re.I,
             )
+        if not code_match:
+            code_match = _RE_CODE_STANDALONE.search(text)
         if not code_match:
             return None
 
         code = code_match.group(1).strip()
-        if code.upper() in {"GAMBA", "BONUS", "DROP", "CODE", "REWARD"}:
+        if code.upper() in {"BONUS", "DROP", "CODE", "REWARD", "CLAIM", "HERE"}:
             return None
 
         reward_match = _RE_VALUE_GENERIC.search(text)
         wager_match = _RE_WAGER_GENERIC.search(text)
         claims_match = _RE_CLAIMS_GENERIC.search(text)
+
         return BonusCodeItem(
             code=code,
-            platform=Platform.GAMBA,
-            amount_value=reward_match.group(1).strip() if reward_match else "Gamba Bonus Drop",
+            platform=platform,
+            amount_value=reward_match.group(1).strip() if reward_match else f"{platform.value} Bonus Drop",
             wager_requirement=wager_match.group(1).strip() if wager_match else "Not specified",
             claims_count=claims_match.group(1).strip() if claims_match else None,
             source_url=msg_url,
-            source_name="@faircodes (Gamba only)",
+            source_name="@faircodes",
             is_affiliate=False,
             image_url=image_url,
-            custom_redeem_link="https://gamba.com",
             event_datetime=event_datetime,
             description=strip_promo_footer(text.strip()),
         )
@@ -845,9 +1059,9 @@ class TelegramScraper:
         Parses drops and VIP events from Telegram channels:
         - Stake.us drops & VIP Weekly/Monthly Boosts (e.g. from @dailybonuscodeUS, @highrollerscodeUS, t.me/c/1542279201/257)
         - Stake.com drops & VIP Weekly/Monthly Boosts (e.g. from @dailybonuscodes, @highrollerscode, t.me/c/2922581483/61)
-        - Shuffle.us & Shuffle.com (e.g. from @anyclaimershuffle, @codestats2)
         - Dual Stake drops (US & COM)
         - Captures full event description, media attachments, and clickable redeem URLs.
+        Shuffle codes are handled by dedicated parsers (_parse_shuffle_only_message, parse_codestats_message).
         """
         normalized_text = unicodedata.normalize('NFKD', text)
         t_upper = normalized_text.upper()
@@ -916,50 +1130,6 @@ class TelegramScraper:
                 event_datetime=event_datetime,
                 description=strip_promo_footer(text.strip())
             )
-
-        if "SHUFFLE.US" in t_upper or ("SHUFFLE" in t_upper and "US" in t_upper and "SC" in t_upper):
-            code_m = _RE_CODE_CODESTATS.search(text)
-            if not code_m:
-                code_m = re.search(r"\b([A-Z0-9]{6,16})\b", text)
-            if code_m:
-                val_m = re.search(r"Value\s*:\s*([^\n]+)", text, re.I)
-                wager_m = re.search(r"(?:Requirements?|REQUIREMENTS?|7-DAY\s*WAGER|7-Day\s*Wager|Wager\s*Required|Wager)[\s:]+([^\n\r]+)", text, re.I)
-                claims_m = re.search(r"Claims?\s*:\s*([0-9,]+)", text, re.I)
-                return BonusCodeItem(
-                    code=code_m.group(1).strip(),
-                    platform=Platform.SHUFFLE_US,
-                    amount_value=val_m.group(1).strip() if val_m else "Shuffle.us Drop",
-                    wager_requirement=wager_m.group(1).strip() if wager_m else "Not specified",
-                    claims_count=claims_m.group(1).strip() if claims_m else None,
-                    source_url=msg_url,
-                    source_name=f"@{channel_name}",
-                    is_affiliate=False,
-                    image_url=image_url,
-                    event_datetime=event_datetime,
-                    description=strip_promo_footer(text.strip())
-                )
-
-        if ("SHUFFLE" in t_upper and "STAKE" not in t_upper) or "ANYCLAIMERSHUFFLE" in channel_name.upper():
-            code_m = _RE_CODE_CODESTATS.search(text)
-            if not code_m:
-                code_m = re.search(r"\b([A-Z0-9]{6,16})\b", text)
-            if code_m:
-                val_m = re.search(r"Value\s*:\s*([^\n]+)", text, re.I)
-                wager_m = re.search(r"(?:Requirements?|REQUIREMENTS?|7-DAY\s*WAGER|7-Day\s*Wager|Wager\s*Required|Wager)[\s:]+([^\n\r]+)", text, re.I)
-                claims_m = re.search(r"Claims?\s*:\s*([0-9,]+)", text, re.I)
-                return BonusCodeItem(
-                    code=code_m.group(1).strip(),
-                    platform=Platform.SHUFFLE_COM,
-                    amount_value=val_m.group(1).strip() if val_m else "Shuffle.com Drop",
-                    wager_requirement=wager_m.group(1).strip() if wager_m else "Not specified",
-                    claims_count=claims_m.group(1).strip() if claims_m else None,
-                    source_url=msg_url,
-                    source_name=f"@{channel_name}",
-                    is_affiliate=False,
-                    image_url=image_url,
-                    event_datetime=event_datetime,
-                    description=strip_promo_footer(text.strip())
-                )
 
         is_dual = False
         t_without_user = t_upper.replace("USER", "")
@@ -1091,8 +1261,9 @@ class TelegramScraper:
                     continue
 
             item: Optional[BonusCodeItem] = None
+            # Explicit channel-to-parser mapping to prevent cross-platform contamination
             if clean_name.casefold() == "faircodes":
-                item = self.parse_gamba_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+                item = self.parse_aggregator_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
             elif "eddiescodesrainbet" in clean_name.lower():
                 item = self.parse_rainbet_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
             elif "winna" in clean_name.lower():
@@ -1105,7 +1276,19 @@ class TelegramScraper:
                 item = self.parse_qzino_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
             elif "codestats" in clean_name.lower():
                 item = self.parse_codestats_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "anyclaimershuffle" in clean_name.lower():
+                # Shuffle-specific channel - only parse Shuffle codes
+                item = self._parse_shuffle_only_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "highrollerscodeus" in clean_name.lower() or "dailybonuscodeus" in clean_name.lower():
+                # Stake.us specific channels
+                item = self._parse_stake_us_only_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "highrollerscode" in clean_name.lower() or "dailybonuscodes" in clean_name.lower():
+                # Stake.com specific channels
+                item = self._parse_stake_com_only_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "qzino" in clean_name.lower() or "qzinodotai" in clean_name.lower():
+                item = self.parse_qzino_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
             else:
+                # Fallback for private channels and unknown sources - use stake parser but strict
                 item = self.parse_stake_message(msg_text, msg_url, clean_name, img_url, event_datetime=msg_dt)
 
             if item:

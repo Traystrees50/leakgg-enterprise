@@ -89,152 +89,80 @@ class DiscordNotifier:
 
     def build_embed(self, item: BonusCodeItem) -> Dict[str, Any]:
         """
-        Builds a high-visibility Discord embed branded to Leaked.GG Code Monitoring.
-        Structured in the exact field order:
-        1. PLATFORM & SOURCE on the same line (inline)
-        2. CODE box on the next line (full width)
-        3. VALUE, WAGER REQUIREMENTS, and CLAIMS LIMIT all on the same line (inline)
-        4. DIRECT REDEEM LINK on the next line (full width)
-        5. SIGNUP link and JOIN DISCORD link on the same line (inline)
-        6. Media/Image attached last at the bottom
+        Builds a clean LEAKED.GG branded Discord embed.
+        No title. Platform field with details. Bold text for labels.
+        Footer: "LEAKED.GG • {detected_at}"
+        Image attached when present (required for DEGEN/QZINO).
         """
         platform_name = item.platform.value.upper()
-        emoji = item.platform.emoji
+        source_name = item.source_name or "Unknown Source"
         color = item.platform.embed_color
 
-        # Dynamic title based on event type
-        if item.is_highroller:
-            title = f"🔥 HIGHROLLER CODE DETECTED: {item.platform.value} {emoji}"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            title = f"👑 VIP NOTICE: {item.platform.value} {emoji}"
-        elif item.event_type == "WEEKLY BOOST":
-            title = f"🎉 WEEKLY BOOST DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "MONTHLY BONUS":
-            title = f"💰 MONTHLY BONUS DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "VIP EVENT":
-            title = f"👑 VIP EVENT DETECTED: {item.platform.value} {emoji}"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            title = f"🚨 NEW DUAL STAKE CODE DETECTED (US & COM) {emoji}"
-        elif item.platform != Platform.UNKNOWN:
-            title = f"🚨 NEW {platform_name} CODE DETECTED {emoji}"
-        else:
-            title = "🚨 NEW PLATFORM CODE DETECTED 🎁"
+        bullet_lines = (
+            f"**Code:** `{item.clean_code}`\n"
+            f"**Value:** {item.amount_value or 'Exclusive Offer'}\n"
+            f"**Total Drop Limit:** {item.claims_count or 'Unlimited'}\n"
+            f"**Requirements:** {item.wager_requirement or 'None'}"
+        )
 
-        # 1. Line 1: PLATFORM & SOURCE on the same line
-        source_display = f"[{item.source_name}]({item.source_url})" if item.source_url else f"`{item.source_name}`"
-        if item.platform.value in PLATFORM_SOURCE_OVERRIDES:
-            override_name, override_url = PLATFORM_SOURCE_OVERRIDES[item.platform.value]
-            source_display = f"[{override_name}]({override_url})"
+        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
+            claim_line = (
+                f"[**CLICK HERE TO CLAIM (US)**]({item.redeem_link_us})  "
+                f"[**CLICK HERE TO CLAIM (COM)**]({item.redeem_link_com})"
+            )
+        else:
+            claim_line = f"[**CLICK HERE TO CLAIM**]({item.redeem_link})"
+
         fields = [
             {
-                "name": "🎰 Platform",
-                "value": f"`{item.platform.value}` {emoji}",
-                "inline": True
+                "name": "**Platform**",
+                "value": f"{platform_name} — {source_name}",
+                "inline": False,
             },
             {
-                "name": "🌐 Source",
-                "value": source_display,
-                "inline": True
-            },
-            # 2. Line 2: CODE goes on this line afterwards
-            {
-                "name": "🎁 Bonus Code (Tap to Copy)",
-                "value": f"```{item.clean_code}```",
-                "inline": False
-            },
-            # 3. Line 3: VALUE, REQUIREMENTS, and CLAIMS all on the same line
-            {
-                "name": "💰 Value / Amount",
-                "value": f"**{item.amount_value or 'Exclusive Offer'}**",
-                "inline": True
-            },
-            {
-                "name": "🔄 Wager Required",
-                "value": f"**{item.wager_requirement or 'None / 0x'}**",
-                "inline": True
-            },
-            {
-                "name": "👥 Claims / Limit",
-                "value": f"**{item.claims_count or 'Unlimited / Open'}**",
-                "inline": True
+                "name": "**Details**",
+                "value": f"{bullet_lines}\n\n{claim_line}",
+                "inline": False,
             }
         ]
 
-        # 4. Line 4: DIRECT REDEEM LINK on this line
-        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            fields.append({
-                "name": "🔗 Direct Redeem Links (Dual Platform)",
-                "value": (
-                    f"🇺🇸 **Stake.us:** [CLICK HERE TO CLAIM]({item.redeem_link_us})\n"
-                    f"🌏 **Stake.com:** [CLICK HERE TO CLAIM]({item.redeem_link_com})"
-                ),
-                "inline": False
-            })
-        else:
-            redeem_url = item.redeem_link
-            fields.append({
-                "name": "🔗 Direct Redeem Link",
-                "value": f"[CLICK HERE TO CLAIM]({redeem_url})",
-                "inline": False
-            })
-
-        # 5. Line 5: SIGNUP link, JOIN DISCORD link, and WATCH ON KICK on the same line
-        signup_url = item.affiliate_signup_link
-        kick_url = get_kick_url_for_platform(item.platform.value)
-        kick_label = get_kick_label_for_platform(item.platform.value)
-        fields.extend([
-            {
-                "name": "📝 Direct Signup Link",
-                "value": f"[SIGNUP HERE]({signup_url})",
-                "inline": True
-            },
-            {
-                "name": "💬 Official Community",
-                "value": f"[JOIN DISCORD]({DISCORD_INVITE_URL})",
-                "inline": True
-            },
-            {
-                "name": kick_label,
-                "value": f"[WATCH ON KICK]({kick_url})",
-                "inline": True
-            }
-        ])
-
-        # Clean, modern embed description without raw telegram text duplication
-        if item.is_highroller:
-            embed_desc = f"🔥 **High Roller Bonus Drop** • Instant claim detected for **{item.platform.value}**!"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            embed_desc = f"👑 **Official VIP Notice** • Event details and claim links for **{item.platform.value}**!"
-        elif item.event_type in ["WEEKLY BOOST", "MONTHLY BONUS", "VIP EVENT"]:
-            embed_desc = f"👑 **Official {item.event_type}** • Direct claim links ready for **{item.platform.value}**!"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            embed_desc = "🚨 **Dual-Platform Bonus Drop** • Valid on both **Stake.us** and **Stake.com**!"
-        elif item.is_affiliate:
-            embed_desc = f"🎁 **Exclusive Partner / Affiliate Bonus** • Register or claim on **{item.platform.value}**!"
-        else:
-            embed_desc = f"⚡ **Verified Bonus Drop** • Instant claim for **{item.platform.value}**!"
-
         embed: Dict[str, Any] = {
-            "title": title,
-            "description": embed_desc,
             "color": color,
             "fields": fields,
-            "footer": {
-                "text": f"{BOT_NAME} • Detected at {item.detected_at}"
-            }
+            "footer": {"text": f"LEAKED.GG • {item.detected_at}"},
         }
 
-        # 6. Media / image goes last
         if item.image_url:
             embed["image"] = {"url": item.image_url}
 
         return embed
 
+    @staticmethod
+    def _link_button_definitions(item: BonusCodeItem) -> List[tuple[str, str]]:
+        return [
+            ("CLAIM", item.redeem_link),
+            ("SIGNUP", item.affiliate_signup_link),
+            ("DISCORD", DISCORD_INVITE_URL),
+            ("KICK", get_kick_url_for_platform(item.platform.value)),
+        ]
+
+    def _link_button_components(self, item: BonusCodeItem) -> List[Dict[str, Any]]:
+        return [{
+            "type": 1,
+            "components": [
+                {"type": 2, "style": 5, "label": label, "url": url}
+                for label, url in self._link_button_definitions(item)
+            ],
+        }]
+
     def _send_single_item_notification(self, item: BonusCodeItem, target_webhooks: List[str], target_channels: List[int]) -> bool:
         embed_dict = self.build_embed(item)
         role_tag = item.platform.role_tag
         # Webhook payload: exclude role tags for Rainbet (clean posts without @ mentions)
-        webhook_payload = {"embeds": [embed_dict]}
+        webhook_payload = {
+            "embeds": [embed_dict],
+            "components": self._link_button_components(item),
+        }
         if role_tag and item.platform != Platform.RAINBET:
             webhook_payload["content"] = role_tag
 
@@ -279,7 +207,15 @@ class DiscordNotifier:
             return False
         return self._send_single_item_notification(item, sub_webhooks, sub_channels)
 
+    _BLOCKED_PHRASES = ("A_ToolsX", "t.me/A_ToolsX", "must join our channel")
+
     def send_notification(self, item: BonusCodeItem, custom_webhook: Optional[str] = None, subscriber_uid: Optional[str] = None) -> bool:
+        try:
+            _blob = str(item.__dict__)
+        except Exception:
+            _blob = str(item)
+        if any(p.lower() in _blob.lower() for p in self._BLOCKED_PHRASES):
+            return False
         """
         Sends the bonus code embed to Discord across all configured webhooks
         and direct bot text channels for the platform(s).
@@ -380,7 +316,7 @@ class DiscordNotifier:
         """
         Safely dispatches an embed to a Discord text channel using client cache or API fetch.
         Handles both thread-pool execution and event loop coroutine scheduling.
-        Includes persistent interactive buttons (Claim URL + Code Checker) when bot_client is available.
+        Includes clickable claim, signup, community, and Kick URL buttons.
         """
         if not self.bot_client or self.bot_client.is_closed():
             return
@@ -407,55 +343,16 @@ class DiscordNotifier:
                     role_tag = item.platform.role_tag
                     embed = discord.Embed.from_dict(embed_dict)
 
-                    # Build interactive view with Claim URL + Code Checker buttons
+                    # These URL-only buttons need no interaction callbacks.
                     view = None
                     try:
-                        redeem_url = item.redeem_link
-                        code_str = item.clean_code
-                        platform_name = item.platform.value
-
-                        class _BonusDropView(discord.ui.View):
-                            def __init__(self):
-                                super().__init__(timeout=0)
-
-                            @discord.ui.button(label="🔎 Code Checker", style=discord.ButtonStyle.secondary)
-                            async def _code_checker_button(self, interaction: discord.Interaction):
-                                try:
-                                    from scrapers.validator import StakeCodeValidator
-                                    validator = StakeCodeValidator()
-                                    result = validator.validate(code_str, item.platform)
-                                    status = result.get("status", "UNKNOWN")
-                                    bonus_val = result.get("bonusValue", "N/A")
-                                    wager = result.get("wagerRequirement", "N/A")
-                                    claims = result.get("claimsRemaining", "N/A")
-
-                                    status_emoji = {"ACTIVE": "🟢", "FULLY_CLAIMED": "🔴", "EXPIRED": "⏰", "INVALID": "❌"}.get(status, "🟡")
-                                    checker_embed = discord.Embed(
-                                        title=f"🔎 Code Checker — {platform_name}",
-                                        description=f"**Code:** `{code_str}`\n**Status:** {status_emoji} {status}",
-                                        color=item.platform.embed_color,
-                                    )
-                                    checker_embed.add_field(name="💰 Bonus Value", value=f"`{bonus_val}`", inline=True)
-                                    checker_embed.add_field(name="🔄 Wager", value=f"`{wager}`", inline=True)
-                                    checker_embed.add_field(name="👥 Claims Left", value=f"`{claims}`", inline=True)
-                                    checker_embed.add_field(name="🔗 Claim URL", value=f"[CLICK HERE]({redeem_url})", inline=False)
-                                    checker_embed.set_footer(text=f"{BOT_NAME} • Code Checker")
-                                    await interaction.response.send_message(embed=checker_embed, ephemeral=True)
-                                except Exception as e:
-                                    logger.error(f"Code checker error: {e}")
-                                    try:
-                                        await interaction.response.send_message(
-                                            f"❌ Code check failed: {str(e)[:200]}", ephemeral=True
-                                        )
-                                    except Exception:
-                                        pass
-
-                        view = _BonusDropView()
-                        view.add_item(discord.ui.Button(
-                            label="🔗 Claim URL",
-                            style=discord.ButtonStyle.link,
-                            url=redeem_url
-                        ))
+                        view = discord.ui.View(timeout=None)
+                        for label, url in self._link_button_definitions(item):
+                            view.add_item(discord.ui.Button(
+                                label=label,
+                                style=discord.ButtonStyle.link,
+                                url=url,
+                            ))
                     except Exception as ve:
                         logger.warning(f"Failed to build interactive view: {ve}")
 
@@ -500,6 +397,8 @@ class DiscordNotifier:
         """
         Sends a raw text message to all configured webhooks and direct channels for the platform.
         """
+        if any(p.lower() in (content or "").lower() for p in self._BLOCKED_PHRASES):
+            return False
         if subscriber_uid:
             target_webhooks = self.dashboard_manager.get_subscriber_webhooks(subscriber_uid, platform)
             target_channels = self.dashboard_manager.get_subscriber_channels(subscriber_uid, platform)

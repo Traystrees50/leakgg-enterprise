@@ -24,6 +24,46 @@ from embed_editor import EmbedTemplateManager
 logger = logging.getLogger("LeakedGG.DiscordBot")
 logging.getLogger("discord").setLevel(logging.WARNING)
 
+PUBLIC_APPLICATION_COMMANDS = frozenset({
+    "activecodes", "activeus", "activecodescom", "activecodesall",
+    "dashboard", "help", "info", "tools", "links", "subscribe", "commands",
+    "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
+    "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers",
+})
+ADMIN_APPLICATION_COMMANDS = frozenset({
+    "admin", "code", "embed-editor", "post", "startmonitor", "status",
+    "codechecker",
+})
+PUBLIC_PREFIX_COMMANDS = frozenset({"activecodes", "activeus", "activecodescom", "activecodesall", "dashboard", "help", "info"})
+ADMIN_PREFIX_COMMANDS = frozenset({"admin", "code", "post", "startmonitor", "status", "codechecker"})
+
+
+def prune_unused_commands(bot: commands.Bot) -> None:
+    """Keep supported commands and allow them in guilds and bot DMs."""
+    allowed_app_commands = PUBLIC_APPLICATION_COMMANDS | ADMIN_APPLICATION_COMMANDS
+    for app_command in tuple(bot.tree.get_commands()):
+        if app_command.name not in allowed_app_commands:
+            bot.tree.remove_command(app_command.name)
+            logger.info("Removed unsupported slash command registration: /%s", app_command.name)
+
+    dm_contexts = discord.app_commands.AppCommandContext(guild=True, dm_channel=True)
+    for app_command in bot.tree.walk_commands():
+        app_command.allowed_contexts = dm_contexts
+
+    allowed_prefix_commands = PUBLIC_PREFIX_COMMANDS | ADMIN_PREFIX_COMMANDS
+    for command in tuple(bot.commands):
+        if command.name not in allowed_prefix_commands:
+            bot.remove_command(command.name)
+            logger.info("Removed unsupported prefix command registration: !%s", command.name)
+            continue
+        for alias in tuple(command.aliases):
+            bot.all_commands.pop(alias, None)
+        command.aliases.clear()
+
+
+def registered_application_command_names(bot: commands.Bot) -> set:
+    return {command.name for command in bot.tree.get_commands()}
+
 
 def _has_admin_access(user: discord.abc.User) -> bool:
     """
@@ -38,13 +78,13 @@ def _has_admin_access(user: discord.abc.User) -> bool:
 
 def create_unauthorized_embed() -> discord.Embed:
     """
-    Generates a clean embed informing non-authorized users of the owner restriction.
+    Generates an embed explaining who can access management controls.
     """
     embed = discord.Embed(
-        title="🔒 Access Restricted — Owner / Subscriber Access Only",
+        title="🔒 Access Restricted — Owner / Admin / Subscriber Only",
         description=(
-            f"Administrative and platform routing configuration is restricted to the Project Creator & Owner (<@{OWNER_USER_ID}>) "
-            "and active subscribers.\n\n"
+            f"Administrative and platform routing configuration is restricted to the Project Owner (<@{OWNER_USER_ID}>), "
+            "server administrators, users with the `admin` role, and approved subscribers.\n\n"
             "DM the Project Owner to inquire about premium dashboard access."
         ),
         color=0xFF1493
@@ -99,42 +139,106 @@ def create_info_embed() -> discord.Embed:
         title=f"ℹ️ {BOT_NAME} — Information",
         description=(
             f"**{BOT_NAME}** monitors configured Telegram feeds, StakeStats, CodeStats, and web sources for "
-            "bonus-code drops, extracts code details (including wager requirements when provided), filters "
-            "duplicates, and sends platform-specific Discord notifications with source and claim links.\n\n"
-            "**GAMBA source rule:** only messages explicitly identified as GAMBA from "
-            "[Faircodes](https://t.me/faircodes) are treated as GAMBA. Its posts for other platforms are ignored.\n\n"
-            f"💬 **Official Discord:** [JOIN DISCORD]({DISCORD_INVITE_URL})\n"
-            f"🎥 **Follow Traystrees50 on Kick:** [kick.com/traystrees50](https://www.kick.com/traystrees50)"
+            "bonus-code and VIP drops. It extracts available code, value, and wager details, filters duplicates, "
+            "and sends platform-specific Discord alerts with source and redemption links.\n\n"
+            "Use `/tools` for VIP bonus, wagering, and conversion tools."
         ),
         color=0x8A2BE2
     )
-    platforms = [platform for platform in Platform if platform != Platform.UNKNOWN]
-    platform_lines = [f"• {platform.emoji} **{platform.value}**" for platform in platforms]
-    for index in range(0, len(platform_lines), 14):
-        embed.add_field(
-            name="🎰 Supported Platforms" if index == 0 else "🎰 Supported Platforms (continued)",
-            value="\n".join(platform_lines[index:index + 14]),
-            inline=False,
-        )
-
     embed.add_field(
         name="⚡ Core Commands",
         value=(
-            "• `/activecodes` — All active Stake.us and Stake.com codes.\n"
-            "• `/activeus` — Stake.us codes only.\n"
-            "• `/activecom` — Stake.com codes only.\n"
-            "• `/codes [platform]` — Query active codes with an optional platform filter.\n"
-            "• `/dashboard` — Configure labeled platform channels and webhooks.\n"
-            "• `/tools` — Interactive VIP, bonus, wagering, and currency tools dashboard.\n"
-            "• `/vip`, `/vip_calc`, `/vip_tiers`, `/set_tier`, `/my_tier` — VIP tools and tier preferences.\n"
-            "• `/weekly`, `/weekly_calc`, `/monthly`, `/monthly_calc`, `/rakeback`, `/dice98`, `/convert` — Calculator shortcuts.\n"
-            "• `/help`, `/commands`, `/links`, `/subscribe` — Help, command list, links, and access information."
+            "• `/dashboard` — Open the public dashboard and its navigation controls.\n"
+            "• `/activecodes` — Fresh Stake.us and Stake.com codes, sorted lowest to highest.\n"
+            "• `/info` and `/help` — Bot overview and usage instructions.\n"
+            "• `/tools` — Interactive VIP bonus, wagering, and conversion tools."
         ),
         inline=False
+    )
+    embed.add_field(
+        name="🔗 Useful Links",
+        value=(
+            f"[Stake.us]({AFFILIATE_SIGNUP_LINKS['Stake.us']}) · "
+            f"[Stake.com]({AFFILIATE_SIGNUP_LINKS['Stake.com']})\n"
+            f"[Official Discord]({DISCORD_INVITE_URL}) · "
+            "[Traystrees50 on Kick](https://www.kick.com/traystrees50)"
+        ),
+        inline=False,
     )
 
     embed.set_footer(text=f"{BOT_NAME} • Enterprise Ready", icon_url=BOT_AVATAR_URL)
     return embed
+
+
+def create_help_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title=f"📖 {BOT_NAME} — Help & Usage",
+        description=(
+            "Use `/dashboard` to open the interactive home panel. Its navigation menu and quick-action "
+            "buttons open active codes, this guide, bot information, and the calculator tools."
+        ),
+        color=0x1475E1,
+    )
+    embed.add_field(
+        name="🌐 Public Commands",
+        value=(
+            "• `/dashboard` — Public home panel; its navigation controls open the public features.\n"
+            "• `/activecodes` — Poll current Stake.us and Stake.com drops, grouped by platform and sorted "
+            "from lowest to highest value. Codes keep their exact casing and include claim links.\n"
+            "• `/info` — Monitoring overview, public commands, and useful links.\n"
+            "• `/help` — This guide and usage instructions.\n"
+            "• `/tools` — Interactive VIP, bonus, wagering, and currency calculators."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="🔒 Protected Management",
+        value=(
+            "The full dashboard settings and management commands remain restricted to the project owner, "
+            "server administrators or `admin` role, and approved subscribers. Authorized users can access "
+            "those controls from the full management dashboard."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="🧭 Dashboard Navigation",
+        value=(
+            "Open `/dashboard`, then use the navigation selector or buttons to view active codes, "
+            "help, bot information, or tools. In the full management dashboard, use the action selector "
+            "for the same public pages alongside the protected configuration actions."
+        ),
+        inline=False,
+    )
+    embed.set_footer(text=f"{BOT_NAME} • Commands and usage")
+    return embed
+
+
+def _command_error_message(error: Exception) -> str:
+    if isinstance(error, (commands.CommandOnCooldown, discord.app_commands.CommandOnCooldown)):
+        return f"⏱️ This command is on cooldown. Try again in {error.retry_after:.1f}s."
+    if isinstance(error, commands.MissingRequiredArgument):
+        return f"❌ Missing argument: `{error.param.name}`"
+    if isinstance(error, commands.BadArgument):
+        return f"❌ Invalid argument: {error}"
+    if isinstance(error, commands.MissingPermissions):
+        return "❌ You don't have permission to use this command."
+    return "❌ An unexpected error occurred. Check the bot logs."
+
+
+async def _send_prefix_command_error(ctx: commands.Context, message: str) -> None:
+    send_options = {"ephemeral": True} if ctx.interaction is not None else {}
+    await ctx.send(message, **send_options)
+
+
+async def _send_app_command_error(
+    interaction: discord.Interaction,
+    message: str,
+) -> None:
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
 
 # Sample test items for each platform for testing routing
 SAMPLE_TEST_ITEMS = {
@@ -420,18 +524,26 @@ def create_sources_embed(manager: DashboardManager) -> discord.Embed:
 
 def create_public_dashboard_embed() -> discord.Embed:
     """
-    Generates a public-facing dashboard embed showing all affiliate/signup links
-    and routing configuration for non-authorized users.
+    Generates a public-facing dashboard embed with feature navigation and signup links.
     """
     embed = discord.Embed(
         title=f"🎛️ {BOT_NAME} — Public Dashboard",
         description=(
-            "Welcome to the **Active Codes** public dashboard.\n\n"
-            "Below are all platform affiliate/signup links and routing configuration. "
-            "Authorized users can open the **full interactive control panel** "
-            "with multi-platform routing, custom webhooks, embed editing, and real-time monitoring controls."
+            "Welcome to the public home panel. Use the navigation menu or buttons below to open active "
+            "codes, the help guide, bot information, or calculator tools. The full management panel is "
+            "available only to authorized users."
         ),
         color=0x1475E1
+    )
+    embed.add_field(
+        name="🎛️ Public Features",
+        value=(
+            "• `/activecodes` — Fresh Stake.us and Stake.com drops, sorted from lowest to highest value.\n"
+            "• `/info` — Monitoring overview and useful links.\n"
+            "• `/help` — Instructions for using the bot and dashboard.\n"
+            "• `/tools` — Interactive calculator tools."
+        ),
+        inline=False,
     )
 
     embed.add_field(
@@ -499,20 +611,111 @@ def create_public_dashboard_embed() -> discord.Embed:
 class PublicDashboardView(discord.ui.View):
     """
     Public dashboard view for non-authorized users.
-    Shows affiliate links and community links.
     """
     def __init__(self, timeout: Optional[float] = 600):
         super().__init__(timeout=timeout)
-        self.add_item(discord.ui.Button(label="💬 Join Discord", style=discord.ButtonStyle.link, row=0, url=DISCORD_INVITE_URL))
-        self.add_item(discord.ui.Button(label="🎥 Follow on Kick", style=discord.ButtonStyle.link, row=0, url="https://www.kick.com/traystrees50"))
-        self.add_item(discord.ui.Button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=1, custom_id="public_refresh"))
+        self.add_item(PublicNavigationSelect())
+        self.add_item(discord.ui.Button(label="💬 Join Discord", style=discord.ButtonStyle.link, row=2, url=DISCORD_INVITE_URL))
+        self.add_item(discord.ui.Button(label="🎥 Follow on Kick", style=discord.ButtonStyle.link, row=2, url="https://www.kick.com/traystrees50"))
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.data.get("custom_id") == "public_refresh":
-            embed = create_public_dashboard_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
-            return False
-        return True
+    @discord.ui.button(label="Active Codes", style=discord.ButtonStyle.success, row=1, emoji="⚡")
+    async def btn_active_codes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await show_dashboard_section(interaction, "activecodes")
+
+    @discord.ui.button(label="Help", style=discord.ButtonStyle.secondary, row=1, emoji="❔")
+    async def btn_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await show_dashboard_section(interaction, "help")
+
+    @discord.ui.button(label="Bot Info", style=discord.ButtonStyle.secondary, row=1, emoji="ℹ️")
+    async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await show_dashboard_section(interaction, "info")
+
+    @discord.ui.button(label="Tools", style=discord.ButtonStyle.primary, row=1, emoji="🧮")
+    async def btn_tools(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await show_dashboard_section(interaction, "tools")
+
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=2, emoji="🔄", custom_id="public_refresh")
+    async def btn_refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            embed=create_public_dashboard_embed(),
+            view=self,
+        )
+
+
+class PublicNavigationSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Active Codes", value="activecodes", emoji="⚡"),
+            discord.SelectOption(label="Help & Instructions", value="help", emoji="❔"),
+            discord.SelectOption(label="Bot Information", value="info", emoji="ℹ️"),
+            discord.SelectOption(label="Calculator Tools", value="tools", emoji="🧮"),
+        ]
+        super().__init__(
+            placeholder="Choose a dashboard page…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await show_dashboard_section(interaction, self.values[0])
+
+
+async def show_dashboard_section(interaction: discord.Interaction, section: str) -> None:
+    if section == "info":
+        await interaction.response.send_message(embed=create_info_embed(), ephemeral=True)
+        return
+    if section == "help":
+        await interaction.response.send_message(embed=create_help_embed(), ephemeral=True)
+        return
+    if section == "tools":
+        from stake_dashboard import get_tools_dashboard
+
+        embed, view = get_tools_dashboard()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        return
+    if section != "activecodes":
+        raise ValueError(f"Unknown dashboard section: {section}")
+
+    poller = getattr(interaction.client, "stakestats_poller", None)
+    if poller is None:
+        logger.error("Cannot open active codes from the dashboard: StakeStats poller is unavailable.")
+        await interaction.response.send_message(
+            "Active codes are temporarily unavailable. Please try again later.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    loop = asyncio.get_running_loop()
+    try:
+        embed_dicts = await asyncio.wait_for(
+            loop.run_in_executor(None, poller.format_discord_active_list),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        await interaction.followup.send(
+            "The active-code query timed out. Please try again.",
+            ephemeral=True,
+        )
+        return
+    except Exception:
+        logger.exception("Could not retrieve active codes from the dashboard.")
+        await interaction.followup.send(
+            "Unable to retrieve active codes right now. Please try again later.",
+            ephemeral=True,
+        )
+        return
+
+    if not embed_dicts:
+        await interaction.followup.send("No active codes were reported right now.", ephemeral=True)
+        return
+    for embed_dict in embed_dicts:
+        await interaction.followup.send(
+            embed=discord.Embed.from_dict(embed_dict),
+            ephemeral=True,
+        )
 
 
 def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscriber_uid: Optional[str] = None) -> List[discord.Embed]:
@@ -547,7 +750,8 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
                         f"👤 **Personal Routing Mode** — You are configuring your own channel routes. "
                         f"Notifications will be dispatched to your channels independently of other servers.\n"
                         if subscriber_uid
-                        else "Configure multi-channel and multi-webhook distribution per platform using the menus below."
+                        else "Configure multi-channel and multi-webhook distribution per platform. "
+                             "The action menu also opens Active Codes, Help, Bot Info, and Tools."
                     )
                 )
                 if idx == 0
@@ -984,7 +1188,7 @@ def _platform_select_options() -> tuple[List[discord.SelectOption], List[discord
         discord.SelectOption(label="COOKED.COM", description="COOKED.COM drops", emoji="🍳"),
         discord.SelectOption(label="WOWVEGAS", description="WOWVEGAS drops", emoji="🌟"),
         discord.SelectOption(label="YAYCASINO", description="YAYCASINO drops", emoji="🎉"),
-        discord.SelectOption(label="GAMBA", description="GAMBA-only posts from @faircodes", emoji="🎲"),
+        discord.SelectOption(label="GAMBA", description="GAMBA bonus-code route", emoji="🎲"),
         discord.SelectOption(label="Default", description="Default / Global Fallback Route", emoji="🌐"),
     ]
     return primary, extra
@@ -1101,7 +1305,7 @@ class ManualPostModal(discord.ui.Modal):
 class ActionSelect(discord.ui.Select):
     """
     Step 2: Action dropdown to add, remove, test, or clear channel IDs and webhooks for selected platforms,
-    and manage monitored drop sources.
+    manage monitored drop sources, or open a public dashboard page.
     """
     def __init__(self):
         options = [
@@ -1120,10 +1324,14 @@ class ActionSelect(discord.ui.Select):
             discord.SelectOption(label="Reset All Routes", value="clear_all", description="Wipe both channels & webhooks for selected platform(s)", emoji="🗑️"),
             discord.SelectOption(label="Grant Access", value="grant_access", description="Grant full dashboard access to a user by ID or username", emoji="🔑"),
             discord.SelectOption(label="Revoke Access", value="revoke_access", description="Remove a subscriber's dashboard access by user ID", emoji="🔒"),
-                discord.SelectOption(label="List Subscribers", value="list_subscribers", description="View active subscribers and expiration details", emoji="👥"),
+            discord.SelectOption(label="List Subscribers", value="list_subscribers", description="View active subscribers and expiration details", emoji="👥"),
+            discord.SelectOption(label="Open Active Codes", value="public_activecodes", description="Show freshly polled Stake.us and Stake.com codes", emoji="⚡"),
+            discord.SelectOption(label="Open Help", value="public_help", description="Show bot instructions and command access", emoji="❔"),
+            discord.SelectOption(label="Open Bot Info", value="public_info", description="Show monitoring details and useful links", emoji="ℹ️"),
+            discord.SelectOption(label="Open Tools", value="public_tools", description="Open the calculator tools dashboard", emoji="🧮"),
         ]
         super().__init__(
-            placeholder="⚙️ Step 2: Choose Routing or Source Action for Selected Platform(s)...",
+            placeholder="⚙️ Step 2: Choose a page, routing, or source action...",
             min_values=1,
             max_values=1,
             options=options,
@@ -1132,6 +1340,9 @@ class ActionSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         action = self.values[0]
+        if action.startswith("public_"):
+            await show_dashboard_section(interaction, action[len("public_"):])
+            return
         selected_platforms = getattr(self.view, "selected_platforms", ["Stake.us"])
         manager = self.view.manager
         uid = str(interaction.user.id)
@@ -2052,6 +2263,7 @@ def run_discord_bot():
     code_validator = StakeCodeValidator()
     engine = ScraperEngine(tracker=tracker, notifier=notifier, code_validator=code_validator)
     poller = StakeStatsPoller()
+    bot.stakestats_poller = poller
     health_mon = HealthMonitor(dashboard_manager=manager, tracker=tracker)
 
     # ----------------------------------------------------
@@ -2106,15 +2318,7 @@ def run_discord_bot():
             logger.error(f"Failed to sync slash commands: {e}", exc_info=True)
 
     async def _cleanup_old_slash_commands(bot):
-        allowed_names = {
-            "codes", "activecodes", "activeus", "activecom", "activecodescom", "activecodesall",
-            "help", "info", "commands", "links", "subscribe", "dashboard",
-            "status", "startmonitor", "embed-editor", "post", "code", "codechecker",
-            "admin", "grant", "revoke", "subscribers",
-            "tools",
-            "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
-            "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers",
-        }
+        allowed_names = registered_application_command_names(bot)
         cleaned = {"global": 0, "guilds": {}}
 
         try:
@@ -2134,7 +2338,7 @@ def run_discord_bot():
                     if cmd["name"] not in allowed_names:
                         await bot.http.delete_guild_command(bot.application_id, guild.id, cmd["id"])
                         cleaned["guilds"][guild.id] = cleaned["guilds"].get(guild.id, 0) + 1
-                        logger.info(f"Removed old guild slash command /{cmd['name']} from {guild.name}")
+                        logger.info(f"Removed stale guild slash command /{cmd['name']} from {guild.name}")
             except Exception as e:
                 logger.debug(f"Guild cleanup skipped for {guild.id}: {e}")
 
@@ -2155,8 +2359,8 @@ def run_discord_bot():
         print(f" ✅ {BOT_NAME} DISCORD BOT IS ONLINE & RUNNING", flush=True)
         print(f" Connected User: {bot.user} (ID: {bot.user.id})", flush=True)
         print(f" Realtime Monitor: {'ENABLED (Every ' + str(interval_secs) + 's)' if manager.get_setting('realtime_monitoring_enabled', True) else 'PAUSED'}", flush=True)
-        print(f" Slash Commands: /codes, /activecodes, /activeus, /activecom, /codechecker, /help, /info, /commands, /links, /subscribe, /dashboard, /tools, /status, /startmonitor, /post, /code, /embed-editor, /admin, /vip, /vip_calc, /vip_tiers, /weekly, /weekly_calc, /monthly, /monthly_calc, /rakeback, /set_tier, /my_tier, /dice98, /convert", flush=True)
-        print(f" Prefix Commands: !codes, !activecodes, !activeus, !activecom, !codechecker, !checkcode, !cc, !help, !info, !commands, !links, !subscribe, !dashboard, !startmonitor, !status, !post, !code, !grant, !revoke, !subscribers", flush=True)
+        print(f" Slash Commands: {', '.join('/' + name for name in sorted(registered_application_command_names(bot)))}", flush=True)
+        print(f" Prefix Commands: {', '.join('!' + command.name for command in sorted(bot.commands, key=lambda command: command.name))}", flush=True)
         print(f"==================================================================\n", flush=True)
 
         # Full command sync: clear old commands and sync current tree
@@ -2200,19 +2404,24 @@ def run_discord_bot():
 
     @bot.event
     async def on_command_error(ctx: commands.Context, error: Exception):
+        if isinstance(error, commands.CommandNotFound):
+            return
         logger.error(f"Command error in {ctx.command}: {error}", exc_info=True)
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"⏱️ This command is on cooldown. Try again in {error.retry_after:.1f}s.", ephemeral=True)
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"❌ Missing argument: `{error.param.name}`", ephemeral=True)
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send(f"❌ Invalid argument: {str(error)}", ephemeral=True)
-        elif isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ You don't have permission to use this command.", ephemeral=True)
-        elif isinstance(error, commands.CommandNotFound):
-            pass  # Silently ignore unknown prefix commands
-        else:
-            await ctx.send("❌ An unexpected error occurred. Check the bot logs.", ephemeral=True)
+        await _send_prefix_command_error(ctx, _command_error_message(error))
+
+    @bot.tree.error
+    async def on_app_command_error(
+        interaction: discord.Interaction,
+        error: discord.app_commands.AppCommandError,
+    ):
+        command_name = interaction.command.qualified_name if interaction.command else "unknown"
+        logger.error(
+            "Application command /%s failed: %s",
+            command_name,
+            error,
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        await _send_app_command_error(interaction, _command_error_message(error))
 
     @bot.event
     async def on_error(event: str, *args, **kwargs):
@@ -2238,86 +2447,15 @@ def run_discord_bot():
     # ----------------------------------------------------
     @bot.hybrid_command(
         name="help",
-        aliases=["about", "guide"],
         with_app_command=True,
-        description="Unified help menu: bot overview, available commands, and platform links"
+        description="Show bot instructions and dashboard navigation"
     )
     async def cmd_help(ctx: commands.Context):
-        """
-        Consolidated help command. Merges /info, /help, /commands, and /links
-        into a single unified embed-based menu.
-        Usage: /help [section]
-        Sections: info, commands, links (default: all)
-        """
-        embed = discord.Embed(
-            title=f"📖 {BOT_NAME} — Enterprise Bot Guide",
-            description="Always-On Active Bonus Code & Low Wager Drop Monitoring Engine.",
-            color=0x1475E1
-        )
-        embed.add_field(
-            name="🎁 Public Commands",
-            value=(
-                "• `/activecodes` — All active Stake.us and Stake.com codes.\n"
-                "• `/activeus` — Stake.us codes only. `/activecom` — Stake.com codes only.\n"
-                "• `/codes [platform]` — Query active codes with an optional platform filter; `/codes` shows both Stake sites.\n"
-                "• `/codechecker` — Check a bonus code status (Active/Expired) with instant claim link.\n"
-                "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
-                "• `/info` — What the bot monitors and supported platforms.\n"
-                "• `/help` — Commands and dashboard guide.\n"
-                "• `/tools` — Open the VIP, bonus, and conversion tools dashboard.\n"
-                "• `/commands` — List all available commands.\n"
-                "• `/links` — View all affiliate/signup links for every platform.\n"
-                "• `/subscribe` — Inquire about premium dashboard access.\n"
-                "• `/dashboard` — Personal routing dashboard for your labeled server channels and webhooks."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="🎲 Calculator Commands",
-            value=(
-                "• `/vip`, `/vip_calc`, `/vip_tiers` — VIP progress and tier ladder.\n"
-                "• `/weekly`, `/weekly_calc`, `/monthly`, `/monthly_calc` — Bonus estimates.\n"
-                "• `/rakeback`, `/dice98`, `/convert` — Rakeback, wagering, and currency estimates.\n"
-                "• `/set_tier`, `/my_tier` — Save or view your preferred tier."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="🔒 Admin Commands (Owner / Subscriber / Server Admin)",
-            value=(
-                "• `/startmonitor` — Start background real-time scanner.\n"
-                "• `/status` — View real-time monitor status, interval, and database counts.\n"
-                "• `/dashboard` — Full platform routing panel. Add each channel/webhook with a label; selectors cover all supported platforms.\n"
-                "• `/code` or `!code` — Validate and broadcast a bonus code to your authorized routes.\n"
-                "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
-                "• `/embed-editor` — View and edit embed formats for each platform."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="👥 Admin Management (Owner / Server Admin)",
-            value=(
-                "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
-                "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
-                "• `/admin subscribers` — List all active subscribers with expiration info.\n"
-                "• `/admin` — Unified admin management panel."
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="💬 Community",
-            value=(
-                f"DM <@{OWNER_USER_ID}> to inquire about premium dashboard access.\n"
-                f"Visit [JOIN DISCORD]({DISCORD_INVITE_URL}) to join the community."
-            ),
-            inline=False
-        )
-        embed.set_footer(text=f"{BOT_NAME} Enterprise Monitoring", icon_url=BOT_AVATAR_URL)
-        await ctx.send(embed=embed)
+        await ctx.send(embed=create_help_embed())
 
-    @bot.hybrid_command(name="info", with_app_command=True, description="Bot overview, supported platforms, and theme palette")
+    @bot.hybrid_command(name="info", with_app_command=True, description="Monitoring overview, public commands, and useful links")
     async def cmd_info(ctx: commands.Context):
-        """Standalone /info command — bot overview and supported platforms."""
+        """Show the monitoring overview, public commands, and useful links."""
         embed = create_info_embed()
         await ctx.send(embed=embed)
 
@@ -2336,9 +2474,10 @@ def run_discord_bot():
                 "• `/activeus` — Stake.us codes only. `/activecom` — Stake.com codes only.\n"
                 "• `/codes [platform]` — Query active codes with an optional platform filter; `/codes` shows both Stake sites.\n"
                 "• `/codechecker` — Check a bonus code status (Active/Expired) with instant claim link.\n"
-                "  *Prefix:* `!codechecker <code> [platform]` or `!checkcode` or `!cc`\n"
-                "• `/info` — What the bot monitors and supported platforms.\n"
+                "  *Prefix:* `!codechecker <code> [platform]`, `!checkcode`, or `!cc`\n"
+                "• `/info` — Monitoring overview, public commands, and useful links.\n"
                 "• `/help` — Commands and dashboard guide.\n"
+                "• `/commands` — List all available commands.\n"
                 "• `/tools` — Open the VIP, bonus, and conversion tools dashboard.\n"
                 "• `/links` — View all affiliate/signup links for every platform.\n"
                 "• `/subscribe` — Inquire about premium dashboard access.\n"
@@ -2363,7 +2502,7 @@ def run_discord_bot():
                 "• `/status` — View real-time monitor status, interval, and database counts.\n"
                 "• `/dashboard` — Full interactive multi-platform control panel.\n"
                 "• `/code` or `!code` — Validate and broadcast a bonus code to authorized routes.\n"
-                "• `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
+                "• `/post` or `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
                 "• `/embed-editor` — View and edit embed formats for each platform."
             ),
             inline=False
@@ -2374,7 +2513,7 @@ def run_discord_bot():
                 "• `/admin grant <user_id>` — Grant dashboard access to a user.\n"
                 "• `/admin revoke <user_id>` — Revoke subscriber dashboard access.\n"
                 "• `/admin subscribers` — List all active subscribers with expiration info.\n"
-                "• `/grant`, `/revoke`, `/subscribers` — Standalone aliases for the above."
+                "Prefix equivalents: `!admin grant`, `!admin revoke`, and `!admin subscribers`."
             ),
             inline=False
         )
@@ -2403,12 +2542,10 @@ def run_discord_bot():
     # ----------------------------------------------------
     # Dashboard & Configuration Commands (Hybrid: Slash & Prefix)
     # ----------------------------------------------------
-    @bot.hybrid_command(name="dashboard", aliases=["setup", "panel", "settings", "config"], with_app_command=True, description="Open the interactive platform routing & webhook control panel")
+    @bot.hybrid_command(name="dashboard", with_app_command=True, description="Open the public dashboard or authorized management panel")
     async def cmd_dashboard(ctx: commands.Context):
         """
-        Opens the interactive enterprise visual control panel with drop down menus.
-        Public users see affiliate links and a subscribe prompt.
-        Restricted to Owner, active $2 crypto subscribers, server administrators, and @admin role users for full admin controls.
+        Opens the public feature dashboard or the restricted management panel.
         """
         is_auth = manager.is_authorized(ctx.author.id) or _has_admin_access(ctx.author)
 
@@ -2430,6 +2567,11 @@ def run_discord_bot():
         """
         Displays the current real-time monitoring engine status and active code statistics.
         """
+        if not manager.is_authorized(ctx.author.id) and not _has_admin_access(ctx.author):
+            send_options = {"ephemeral": True} if ctx.interaction is not None else {}
+            await ctx.send(embed=create_unauthorized_embed(), **send_options)
+            return
+
         is_running = background_monitoring_sweep.is_running()
         interval = manager.get_setting("check_interval_seconds", CHECK_INTERVAL_SECONDS)
         all_tracked = tracker.get_all()
@@ -2713,6 +2855,25 @@ def run_discord_bot():
         embed.set_footer(text=f"{BOT_NAME} • Manual Broadcast", icon_url=BOT_AVATAR_URL)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @bot.command(name="post")
+    async def prefix_post(ctx: commands.Context):
+        if not manager.is_authorized(ctx.author.id) and not _has_admin_access(ctx.author):
+            await ctx.send(embed=create_unauthorized_embed())
+            return
+
+        view = ManualPostView(manager, bot)
+        embed = discord.Embed(
+            title="📝 Manual Post — Broadcast to Platform Channels",
+            description=(
+                "**Step 1:** Select one or more target platforms from the dropdown below.\n"
+                "**Step 2:** Click **📝 Open Post Form** and paste your full event text / post.\n\n"
+                "The message will be sent as raw text to all configured channels and webhooks for the selected platform(s)."
+            ),
+            color=0x1475E1
+        )
+        embed.set_footer(text=f"{BOT_NAME} • Manual Broadcast", icon_url=BOT_AVATAR_URL)
+        await ctx.send(embed=embed, view=view)
+
     @bot.hybrid_command(name="code", with_app_command=True, description="Validate and broadcast a bonus code to configured routes")
     async def cmd_code(ctx: commands.Context, *, raw_input: str):
         """
@@ -2895,7 +3056,7 @@ def run_discord_bot():
     # ----------------------------------------------------
     # Admin Command Group (Consolidated: grant, revoke, subscribers)
     # ----------------------------------------------------
-    @bot.group(name="admin", with_app_command=True, description="Admin management commands: grant, revoke, and subscriber listing")
+    @bot.hybrid_group(name="admin", description="Admin management commands: grant, revoke, and subscriber listing")
     async def admin_group(ctx: commands.Context):
         if not ctx.invoked_subcommand:
             embed = discord.Embed(
@@ -3081,7 +3242,7 @@ def run_discord_bot():
         modal = CodeCheckerModal()
         await interaction.response.send_modal(modal)
 
-    @bot.command(name="checkcode", aliases=["cc"])
+    @bot.command(name="codechecker", aliases=["checkcode", "cc"])
     async def prefix_checkcode(ctx: commands.Context, *, code: str = ""):
         """
         Prefix fallback for /codechecker. Works in DMs and servers.
@@ -3176,6 +3337,13 @@ def run_discord_bot():
         save_backup("code_check", platform.value if platform != Platform.UNKNOWN else "unknown", code_str, f"status={status}")
 
         await ctx.send(embed=checker_embed)
+
+    prune_unused_commands(bot)
+    logger.info(
+        "Registered public commands: %s; protected commands: %s",
+        ", ".join(sorted(PUBLIC_APPLICATION_COMMANDS)),
+        ", ".join(sorted(ADMIN_APPLICATION_COMMANDS)),
+    )
 
     try:
         bot.run(DISCORD_BOT_TOKEN, log_handler=None)

@@ -45,12 +45,25 @@
     ],
     "Stake.com - VIP Notices": [
       1528922253499170876
+    ],
+    "GAMBA": [
+      1460666123484794880
     ]
   },
   "webhooks": {
     "Rainbet": [
-      "https://discord.com/api/webhooks/1549956317026844703/hirLlaBj0zA4Ni2RqkK0liaHgkK7c01f3mnjoPsxACXYPZycrRgzt03NXK1Kla-w0BSw"
+      "https://discord.com/api/webhooks/1565129798492364850/ccOjrNLeAnMZt1whgm-pO9GWmrk7a3dWIKfETCB76IqpAhnEFZ9p5-y6bFoEPugd4X2u"
     ]
+  },
+  "disabled_env_webhooks": {},
+  "disabled_default_webhooks": {},
+  "route_labels": {
+    "channels": {
+      "GAMBA": {
+        "1460666123484794880": "testing stb"
+      }
+    },
+    "webhooks": {}
   },
   "sources": {
     "telegram": {},

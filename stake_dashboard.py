@@ -820,6 +820,10 @@ async def _open_tool(interaction: discord.Interaction, tool_key: str) -> None:
         )
 
 
+def get_tools_dashboard() -> Tuple[discord.Embed, discord.ui.View]:
+    return _dashboard_embed(), _ToolsMainMenuView()
+
+
 def register_tools_dashboard(bot: commands.Bot) -> None:
     # Register static menu layouts so already-sent dashboard messages remain interactive.
     persistent_views = [
@@ -840,7 +844,8 @@ def register_tools_dashboard(bot: commands.Bot) -> None:
 
     @bot.tree.command(name="tools", description="Open the interactive calculator tools dashboard")
     async def tools_dashboard(interaction: discord.Interaction) -> None:
+        embed, view = get_tools_dashboard()
         await interaction.response.send_message(
-            embed=_dashboard_embed(),
-            view=_ToolsMainMenuView(),
+            embed=embed,
+            view=view,
         )

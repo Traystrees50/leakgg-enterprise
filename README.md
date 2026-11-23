@@ -37,8 +37,9 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
   - 🎲 🟢 **GAMBA** (`0x14B8A6` - Teal) • Signup: `https://gamba.com?c=bonuscash`
   - 🎰 🌐 **Dual Stake (US & COM)** (`0x8B5CF6` - Dual Indigo)
 
-- **Enterprise Interactive Dashboard (`/dashboard` & `!dashboard`)**:
-  - Full Discord UI control panel with platform selectors covering every supported platform and a separate Default route.
+- **Interactive Dashboard (`/dashboard` & `!dashboard`)**:
+  - Public home panel with buttons and a navigation selector for active codes, help, bot information, and calculator tools.
+  - Authorized users can open the full management panel with platform selectors covering every supported platform and a separate Default route.
   - Configure multiple channel IDs and webhook URLs per platform; each destination has a human-readable label.
   - Add/remove labeled channels and webhooks, fast-bind the current channel, and dispatch instant test embeds.
   - Live toggles for Real-time background sweep daemon and interval adjustment.
@@ -50,7 +51,7 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 
 - **Live Active Code Scanners (`/activecodes`)**:
   - Queries `https://stakestats.net/stake/tools/code` in real-time.
-  - Displays organized lists of active codes for Stake.us and Stake.com with copyable code blocks, wager requirements, values, and one-click redeem links.
+  - Displays a combined embed grouped by Stake.us and Stake.com, sorted from lowest to highest value, with copyable codes, wager requirements, values, and one-click redeem links. Additional pages are used only when Discord embed limits require them.
   - Highlights High Roller drops with `🔥 [HIGHROLLER]`.
 
 - **100% Strict Case Preservation**:
@@ -61,7 +62,6 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
   - **Stake.us**: `@highrollerscodeUS`, `@dailybonuscodeUS`, `t.me/codestats2`, and channel `1542279201`.
   - **Stake.com**: `@highrollerscode`, `@dailybonuscodes`, `t.me/codestats2`.
   - **Rainbet**: `@EddiesCodesRainbet` with dedicated drop format (Code, Redeem URL `https://rainbet.com/affiliates?modal=wallet&tab=redeem`, Reward, Wager, Claims).
-  - **GAMBA**: `@faircodes` is an aggregator; only posts explicitly identified as GAMBA are accepted. Posts for every other platform are ignored and cannot enter their routes as GAMBA.
   - **WINNA / THRILL**: Monitored from their configured Telegram feeds.
   - **Degen**: `@degendotcom` with full image/media attachment previews.
   - **Shuffle**: `codestats2` for Shuffle.us and Shuffle.com drops.
@@ -96,29 +96,24 @@ Monitors Telegram channels, StakeStats.net live database, CodeStats.gg, and prem
 
 | Command | Access | Type | Description |
 |---|---|---|---|
-| `/subscribe` / `!subscribe` | 🌐 Public | Hybrid | Subscribe for $2 in crypto to unlock full premium dashboard access in any server. |
-| `/activecodes` / `!activecodes` | 🌐 Public | Hybrid | Shows all active Stake.us and Stake.com codes from StakeStats.net. |
-| `/activeus` / `!activeus` | 🌐 Public | Hybrid | Shows only active Stake.us codes. |
-| `/activecom` / `!activecom` | 🌐 Public | Hybrid | Shows only active Stake.com codes. |
-| `/codes [platform]` / `!codes [platform]` | 🌐 Public | Hybrid | Queries active codes, optionally filtered to a platform. |
-| `/links` / `!links` | 🌐 Public | Hybrid | Displays all affiliate/signup links for every supported platform plus Discord and Kick. |
-| `!code` | 🌐 Public | Prefix | Manually submit a bonus code for validation and broadcast. Usage: `!code <platform> <code>` or `!code <code>`. |
-| `!post` | 🔒 Owner / Admin / Subscriber | Prefix | Manually broadcast a raw event/post to selected platform channels. Usage: `!post <platform> <message>`. |
-| `/status` / `!status` | 🌐 Public | Hybrid | Displays real-time monitoring engine status, polling interval, and tracked drop statistics. |
-| `/info` / `!info` | 🌐 Public | Hybrid | Displays bot overview, supported platforms, theme palette, and quick command overview. |
-| `/commands` / `!commands` | 🌐 Public | Hybrid | Lists all currently available commands with descriptions and affiliate links. |
-| `/help` / `!help` | 🌐 Public | Hybrid | Displays comprehensive bot guide, usage instructions, and platform registration links. |
-| `/dashboard` / `!dashboard` | 🔒 Owner / Admin / Subscriber | Hybrid | Opens the interactive enterprise control panel with platform & action dropdown menus. |
+| `/dashboard` / `!dashboard` | 🌐 Public; management controls restricted | Hybrid | Opens the public feature dashboard, or the full management dashboard for authorized users. |
+| `/activecodes` / `!activecodes` | 🌐 Public | Hybrid | Polls StakeStats for active Stake.us and Stake.com codes, grouped by platform and sorted by value. |
+| `/info` / `!info` | 🌐 Public | Hybrid | Displays the monitoring overview, public commands, and useful links. |
+| `/help` / `!help` | 🌐 Public | Hybrid | Shows usage instructions and dashboard navigation. |
 | `/tools` | 🌐 Public | Slash | Opens the interactive tools dashboard for VIP, bonus, and conversion calculators. |
+| `/status` / `!status` | 🔒 Owner / Admin / Subscriber | Hybrid | Displays monitoring status, polling interval, and tracked-drop statistics. |
 | `/startmonitor` / `!startmonitor` | 🔒 Owner / Admin / Subscriber | Hybrid | Starts background real-time monitoring sweeps across all sources. |
-| `/vip` / `/vip_calc` / `/vip_tiers` | 🌐 Public | Slash | Show VIP progress estimates and the tier ladder. |
-| `/weekly` / `/weekly_calc` / `/monthly` / `/monthly_calc` | 🌐 Public | Slash | Estimate weekly or monthly bonuses using community formulas. |
-| `/rakeback` / `/dice98` / `/convert` | 🌐 Public | Slash | Estimate rakeback or wagering figures, and convert USD/SC and GC. |
-| `/set_tier` / `/my_tier` | 🌐 Public | Slash | Save or view your preferred VIP tier. |
+| `/code` / `!code` | 🔒 Owner / Admin / Subscriber | Hybrid | Validates and broadcasts a bonus code to authorized routes. |
+| `/post` / `!post` | 🔒 Owner / Admin / Subscriber | Hybrid | Opens the manual broadcast controls for selected platforms. |
+| `/embed-editor` | 🔒 Owner / Admin / Subscriber | Slash | Views and edits embed formats for each platform. |
+| `/admin grant`, `/admin revoke`, `/admin subscribers` | 🔒 Owner / Server Admin | Hybrid | Manage dashboard access and review subscribers. |
 
 > **Access Levels:**
 > - 🌐 **Public** — Available to all users and server members.
-> - 🔒 **Owner / Admin / Subscriber** — Restricted to the project owner (`traystrees50`), server administrators, users with an `@admin` role, and active $2 crypto subscribers.
+> - 🔒 **Owner / Admin / Subscriber** — Restricted to the project owner, server administrators, users with an `@admin` role, and approved subscribers.
+>
+> On bot startup, the slash-command tree is synchronized to the public and protected commands above. Global and guild-scoped commands no longer registered by this bot are removed.
+>
 > Calculator results are community estimates, not official Stake formulas or guarantees. Gambling outcomes are random and may result in losses.
 
 ---

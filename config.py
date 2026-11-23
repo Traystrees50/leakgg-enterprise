@@ -99,7 +99,7 @@ KICK_STREAM_LINKS = {
     "Rainbet": "https://www.kick.com/moonbootmurphy",
 }
 KICK_STREAM_LABELS = {
-    "Rainbet": "🎥 Watch On Kick",
+    "Rainbet": "KICK",
 }
 
 # Platform-specific source name & URL overrides for embed "Source" field

@@ -315,11 +315,11 @@ def cmd_test_discord():
             platform=Platform.GAMBA,
             amount_value="Test bonus drop",
             wager_requirement="Not specified",
-            source_url="https://t.me/faircodes",
-            source_name="@faircodes (Gamba only)",
+            source_url="https://gamba.com",
+            source_name="GAMBA test source",
             is_affiliate=False,
             custom_redeem_link="https://gamba.com",
-            description="[TEST EVENT] GAMBA route check; Faircodes monitoring accepts GAMBA posts only."
+            description="[TEST EVENT] GAMBA route and embed formatting check."
         ),
         BonusCodeItem(
             code="mjp6axxg",

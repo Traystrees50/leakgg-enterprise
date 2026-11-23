@@ -30,4 +30,6 @@ venv/
 # Runtime
 .DS_Store
 Thumbs.db
+*.session
+*.session-journal
 user_prefs.json

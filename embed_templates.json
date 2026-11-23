@@ -20,23 +20,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**$12.50 USD**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**$50,000 wagered in last 7 days**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**$50,000 Total Drop Limit**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://stake.com/settings/offers?type=drop&code=stakecom20isfwl8h12zwe&currency=ltc&modal=redeemBonus)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **$12.50 USD**  |  **Wager Required:** **$50,000 wagered in last 7 days**  |  **Claims / Limit:** **$50,000 Total Drop Limit**",
         "inline": false
       },
       {
@@ -64,7 +49,7 @@
   },
   "Stake.us": {
     "title": "🚨 NEW STAKE.US CODE DETECTED 🎰 🇺🇸",
-    "description": "⚡ **Verified Bonus Drop** • Instant claim for **Stake.us**!",
+    "description": "",
     "color": "#FF7700",
     "fields": [
       {
@@ -83,23 +68,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**2 SC + 20,000 GC**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**8,000 SC played in last 7 days**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**2,000 SC Limit**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://stake.us/settings/offers?currency=sweeps&type=drop&code=stakeusdqzndszza8v2nq&modal=redeemBonus)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **2 SC + 20,000 GC**  |  **Wager Required:** **8,000 SC played in last 7 days**  |  **Claims / Limit:** **2,000 SC Limit**",
         "inline": false
       },
       {
@@ -146,23 +116,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**VIP Weekly Boost Claim Link**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**VIP Tier Based**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://stake.com/settings/offers?type=drop&code=STAKE_COM_WEEKLY_BOOST_%23123&currency=ltc&modal=redeemBonus)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **VIP Weekly Boost Claim Link**  |  **Wager Required:** **VIP Tier Based**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -209,23 +164,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**VIP Weekly Boost Claim Link**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**VIP Tier Based**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://stake.com/settings/offers?type=drop&code=STAKE_US_WEEKLY_BOOST_%23456&currency=ltc&modal=redeemBonus)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **VIP Weekly Boost Claim Link**  |  **Wager Required:** **VIP Tier Based**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -253,7 +193,7 @@
   },
   "Shuffle.com": {
     "title": "🚨 NEW SHUFFLE.COM CODE DETECTED 🔀 🌍",
-    "description": "⚡ **Verified Bonus Drop** • Instant claim for **Shuffle.com**!",
+    "description": "",
     "color": "#8A2BE2",
     "fields": [
       {
@@ -272,23 +212,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**$25.00 USD**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**$100,000 wager past 7 days**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**150 Claims**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://shuffle.com/?modal=c&md-code=KZU80TZA)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **$25.00 USD**  |  **Wager Required:** **$100,000 wager past 7 days**  |  **Claims / Limit:** **150 Claims**",
         "inline": false
       },
       {
@@ -316,7 +241,7 @@
   },
   "Shuffle.us": {
     "title": "🚨 NEW SHUFFLE.US CODE DETECTED 🔀 🇺🇸",
-    "description": "⚡ **Verified Bonus Drop** • Instant claim for **Shuffle.us**!",
+    "description": "",
     "color": "#FFFFFF",
     "fields": [
       {
@@ -335,23 +260,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**1.5 SC + 15,000 GC**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**2,500 SC played in last 7 days**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**500 Claims**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://shuffle.us/?modal=c&md-code=NK60ZYU0)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **1.5 SC + 15,000 GC**  |  **Wager Required:** **2,500 SC played in last 7 days**  |  **Claims / Limit:** **500 Claims**",
         "inline": false
       },
       {
@@ -379,7 +289,7 @@
   },
   "Rainbet": {
     "title": "🚨 NEW RAINBET CODE DETECTED 🌧️ ⚡",
-    "description": "⚡ **Verified Bonus Drop** • Instant claim for **Rainbet**!",
+    "description": "",
     "color": "#0A2540",
     "fields": [
       {
@@ -398,23 +308,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**$10.00**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**$4,000 Wager Required**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**600 Claims**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://rainbet.com/affiliates?modal=wallet&tab=redeem)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **$10.00**  |  **Wager Required:** **$4,000 Wager Required**  |  **Claims / Limit:** **600 Claims**",
         "inline": false
       },
       {
@@ -442,7 +337,7 @@
   },
   "Degen": {
     "title": "🚨 NEW DEGEN CODE DETECTED 🔥 ⚡",
-    "description": "⚡ **Verified Bonus Drop** • Instant claim for **Degen**!",
+    "description": "",
     "color": "#EF4444",
     "fields": [
       {
@@ -461,23 +356,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**$5.00 Bonus Drop**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**$2,500 Wager**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://degen.com/r/selfmade)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **$5.00 Bonus Drop**  |  **Wager Required:** **$2,500 Wager**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -524,23 +404,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**100% Match + AI Rakeback**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**10x Playthrough**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://qzino.ai/?r=SELFMADE)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **100% Match + AI Rakeback**  |  **Wager Required:** **10x Playthrough**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -587,23 +452,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**100% Deposit Match + 5% Rakeback**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**30x Playthrough**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://goated.com/?r=selfmade)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **100% Deposit Match + 5% Rakeback**  |  **Wager Required:** **30x Playthrough**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -650,23 +500,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**$3.00 (US & COM)**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**$6,000 Played in last 7 days**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Links (Dual Platform)",
-        "value": "🇺🇸 **Stake.us:** [CLICK HERE TO CLAIM](https://stake.us/settings/offers?currency=sweeps&type=drop&code=mjp6axxg&modal=redeemBonus)\n🌏 **Stake.com:** [CLICK HERE TO CLAIM](https://stake.com/settings/offers?type=drop&code=mjp6axxg&currency=ltc&modal=redeemBonus)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **$3.00 (US & COM)**  |  **Wager Required:** **$6,000 Played in last 7 days**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -713,23 +548,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**Exclusive Offer**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**None**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://thrill.com/?r=selfmade)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **Exclusive Offer**  |  **Wager Required:** **None**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {
@@ -776,23 +596,8 @@
         "inline": false
       },
       {
-        "name": "💰 Value / Amount",
-        "value": "**Exclusive Offer**",
-        "inline": true
-      },
-      {
-        "name": "🔄 Wager Required",
-        "value": "**None**",
-        "inline": true
-      },
-      {
-        "name": "👥 Claims / Limit",
-        "value": "**Unlimited / Open**",
-        "inline": true
-      },
-      {
-        "name": "🔗 Direct Redeem Link",
-        "value": "[CLICK HERE TO CLAIM](https://winna.com/?bonus-center=true&SELFMADE)",
+        "name": "💰 Bonus Details",
+        "value": "**Value / Amount:** **Exclusive Offer**  |  **Wager Required:** **None**  |  **Claims / Limit:** **Unlimited / Open**",
         "inline": false
       },
       {

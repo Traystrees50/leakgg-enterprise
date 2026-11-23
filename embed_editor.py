@@ -26,9 +26,91 @@ class EmbedTemplateManager:
             except Exception as e:
                 logger.error(f"Failed to load embed templates: {e}")
                 self.templates = {}
+        templates_changed = self._remove_direct_redeem_fields()
+        if self._remove_verified_bonus_descriptions():
+            templates_changed = True
+        if self._consolidate_amount_fields():
+            templates_changed = True
+        if templates_changed:
+            self.save()
         if not self.templates:
             self.templates = self._generate_defaults()
             self.save()
+
+    def _remove_direct_redeem_fields(self) -> bool:
+        removed = False
+        redeem_field_names = {
+            "🔗 Direct Redeem Link",
+            "🔗 Direct Redeem Links (Dual Platform)",
+        }
+        for template in self.templates.values():
+            if not isinstance(template, dict):
+                continue
+            fields = template.get("fields")
+            if not isinstance(fields, list):
+                continue
+            filtered_fields = [
+                field for field in fields
+                if not isinstance(field, dict) or field.get("name") not in redeem_field_names
+            ]
+            if len(filtered_fields) != len(fields):
+                template["fields"] = filtered_fields
+                removed = True
+        return removed
+
+    def _consolidate_amount_fields(self) -> bool:
+        changed = False
+        amount_field_names = (
+            "💰 Value / Amount",
+            "🔄 Wager Required",
+            "👥 Claims / Limit",
+        )
+        for template in self.templates.values():
+            if not isinstance(template, dict):
+                continue
+            fields = template.get("fields")
+            if not isinstance(fields, list):
+                continue
+            amount_fields = {
+                field.get("name"): field
+                for field in fields
+                if isinstance(field, dict) and field.get("name") in amount_field_names
+            }
+            if len(amount_fields) != len(amount_field_names):
+                continue
+            first_index = min(fields.index(amount_fields[name]) for name in amount_field_names)
+            combined_field = {
+                "name": "💰 Bonus Details",
+                "value": (
+                    f"**Value / Amount:** {amount_fields[amount_field_names[0]].get('value', '')}"
+                    f"  |  **Wager Required:** {amount_fields[amount_field_names[1]].get('value', '')}"
+                    f"  |  **Claims / Limit:** {amount_fields[amount_field_names[2]].get('value', '')}"
+                ),
+                "inline": False,
+            }
+            fields = [
+                field for field in fields
+                if not isinstance(field, dict) or field.get("name") not in amount_field_names
+            ]
+            fields.insert(first_index, combined_field)
+            template["fields"] = fields
+            changed = True
+        return changed
+
+    def _remove_verified_bonus_descriptions(self) -> bool:
+        removed = False
+        for template in self.templates.values():
+            if not isinstance(template, dict):
+                continue
+            description = template.get("description")
+            if (
+                isinstance(description, str)
+                and "verified bonus drop" in description.casefold()
+                and "instant claim for" in description.casefold()
+            ):
+                template["description"] = ""
+                removed = True
+        return removed
 
     def save(self):
         try:
@@ -75,126 +157,47 @@ class EmbedTemplateManager:
 
     def _build_template_for_item(self, item: BonusCodeItem) -> Dict[str, Any]:
         platform_name = item.platform.value.upper()
-        emoji = item.platform.emoji
+        source_name = item.source_name or "Unknown Source"
         color = item.platform.embed_color
 
-        if item.is_highroller:
-            title = f"🔥 HIGHROLLER CODE DETECTED: {item.platform.value} {emoji}"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            title = f"👑 VIP NOTICE: {item.platform.value} {emoji}"
-        elif item.event_type == "WEEKLY BOOST":
-            title = f"🎉 WEEKLY BOOST DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "MONTHLY BONUS":
-            title = f"💰 MONTHLY BONUS DETECTED: {item.platform.value} {emoji}"
-        elif item.event_type == "VIP EVENT":
-            title = f"👑 VIP EVENT DETECTED: {item.platform.value} {emoji}"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            title = f"🚨 NEW DUAL STAKE CODE DETECTED (US & COM) {emoji}"
-        elif item.platform != Platform.UNKNOWN:
-            title = f"🚨 NEW {platform_name} CODE DETECTED {emoji}"
-        else:
-            title = "🚨 NEW PLATFORM CODE DETECTED 🎁"
+        bullet_lines = (
+            f"**Code:** `{item.clean_code}`\n"
+            f"**Value:** {item.amount_value or 'Exclusive Offer'}\n"
+            f"**Total Drop Limit:** {item.claims_count or 'Unlimited'}\n"
+            f"**Requirements:** {item.wager_requirement or 'None'}"
+        )
 
-        source_display = f"[{item.source_name}]({item.source_url})" if item.source_url else f"`{item.source_name}`"
-        if item.platform.value in PLATFORM_SOURCE_OVERRIDES:
-            override_name, override_url = PLATFORM_SOURCE_OVERRIDES[item.platform.value]
-            source_display = f"[{override_name}]({override_url})"
+        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
+            claim_line = (
+                f"[**CLICK HERE TO CLAIM (US)**]({item.redeem_link_us})  "
+                f"[**CLICK HERE TO CLAIM (COM)**]({item.redeem_link_com})"
+            )
+        else:
+            claim_line = f"[**CLICK HERE TO CLAIM**]({item.redeem_link})"
+
         fields = [
             {
-                "name": "🎰 Platform",
-                "value": f"`{item.platform.value}` {emoji}",
-                "inline": True
+                "name": "**Platform**",
+                "value": f"{platform_name} — {source_name}",
+                "inline": False,
             },
             {
-                "name": "🌐 Source",
-                "value": source_display,
-                "inline": True
-            },
-            {
-                "name": "🎁 Bonus Code (Tap to Copy)",
-                "value": f"```{item.clean_code}```",
-                "inline": False
-            },
-            {
-                "name": "💰 Value / Amount",
-                "value": f"**{item.amount_value or 'Exclusive Offer'}**",
-                "inline": True
-            },
-            {
-                "name": "🔄 Wager Required",
-                "value": f"**{item.wager_requirement or 'None / 0x'}**",
-                "inline": True
-            },
-            {
-                "name": "👥 Claims / Limit",
-                "value": f"**{item.claims_count or 'Unlimited / Open'}**",
-                "inline": True
+                "name": "**Details**",
+                "value": f"{bullet_lines}\n\n{claim_line}",
+                "inline": False,
             }
         ]
 
-        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            fields.append({
-                "name": "🔗 Direct Redeem Links (Dual Platform)",
-                "value": (
-                    f"🇺🇸 **Stake.us:** [CLICK HERE TO CLAIM]({item.redeem_link_us})\n"
-                    f"🌏 **Stake.com:** [CLICK HERE TO CLAIM]({item.redeem_link_com})"
-                ),
-                "inline": False
-            })
-        else:
-            redeem_url = item.redeem_link
-            fields.append({
-                "name": "🔗 Direct Redeem Link",
-                "value": f"[CLICK HERE TO CLAIM]({redeem_url})",
-                "inline": False
-            })
-
-        kick_url = KICK_STREAM_LINKS.get(item.platform.value, DEFAULT_KICK_LINK)
-        fields.extend([
-            {
-                "name": "📝 Direct Signup Link",
-                "value": f"[SIGNUP HERE]({item.affiliate_signup_link})",
-                "inline": True
-            },
-            {
-                "name": "💬 Official Community",
-                "value": "[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)",
-                "inline": True
-            },
-            {
-                "name": KICK_STREAM_LABELS.get(item.platform.value, DEFAULT_KICK_LABEL),
-                "value": f"[KICK]({kick_url})",
-                "inline": True
-            }
-        ])
-
-        if item.is_highroller:
-            embed_desc = f"🔥 **High Roller Bonus Drop** • Instant claim detected for **{item.platform.value}**!"
-        elif item.platform in (Platform.STAKE_COM_VIP_NOTICES, Platform.STAKE_US_VIP_NOTICES):
-            embed_desc = f"👑 **Official VIP Notice** • Event details and claim links for **{item.platform.value}**!"
-        elif item.event_type in ["WEEKLY BOOST", "MONTHLY BONUS", "VIP EVENT"]:
-            embed_desc = f"👑 **Official {item.event_type}** • Direct claim links ready for **{item.platform.value}**!"
-        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            embed_desc = "🚨 **Dual-Platform Bonus Drop** • Valid on both **Stake.us** and **Stake.com**!"
-        elif item.is_affiliate:
-            embed_desc = f"🎁 **Exclusive Partner / Affiliate Bonus** • Register or claim on **{item.platform.value}**!"
-        else:
-            embed_desc = f"⚡ **Verified Bonus Drop** • Instant claim for **{item.platform.value}**!"
-
-        template: Dict[str, Any] = {
-            "title": title,
-            "description": embed_desc,
-            "color": f"#{color:06X}",
+        embed: Dict[str, Any] = {
+            "color": color,
             "fields": fields,
-            "footer_text": f"{BOT_NAME} • Detected at {item.detected_at}",
-            "footer_icon": "",
-            "author_name": "",
-            "author_icon": "",
-            "thumbnail_url": "",
-            "image_url": item.image_url or ""
+            "footer": {"text": f"LEAKED.GG • {item.detected_at}"},
         }
 
-        return template
+        if item.image_url:
+            embed["image"] = {"url": item.image_url}
+
+        return embed
 
     def _generate_defaults(self) -> Dict[str, Dict[str, Any]]:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

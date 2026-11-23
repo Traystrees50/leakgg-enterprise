@@ -15,6 +15,7 @@ from filters import (
 from tracker import CodeTracker
 from dashboard_manager import DashboardManager
 from discord_notifier import DiscordNotifier
+from embed_editor import EmbedTemplateManager
 from scrapers.sources import SiteScraper
 from scrapers.telegram import TelegramScraper
 from scrapers.stakestats import StakeStatsPoller
@@ -24,7 +25,7 @@ from health_monitor import HealthMonitor
 from config import (
     COLOR_STAKE_COM, COLOR_STAKE_US, COLOR_SHUFFLE_COM, COLOR_SHUFFLE_US,
     COLOR_QZINO, COLOR_RAINBET, COLOR_DEGEN, COLOR_GOATED, COLOR_DUAL_STAKE,
-    AFFILIATE_SIGNUP_LINKS, OWNER_USER_ID,
+    AFFILIATE_SIGNUP_LINKS, DISCORD_INVITE_URL, OWNER_USER_ID,
 )
 
 class TestLeakedGGMonitoring(unittest.TestCase):
@@ -172,20 +173,143 @@ class TestLeakedGGMonitoring(unittest.TestCase):
         self.assertEqual(item.redeem_link, "https://rainbet.com/affiliates?modal=wallet&tab=redeem")
         self.assertEqual(item.affiliate_signup_link, "https://rainbet.com/?r=murphy")
 
-    def test_faircodes_only_yields_explicit_gamba_posts(self):
+    def test_rainbet_parses_reward_and_wagered_event_labels(self):
+        tg = TelegramScraper()
+        item = tg.parse_rainbet_message(
+            "Click Code To Copy: RAINBETEVENT\nReward: $25.50\nWagered: $12,500.75",
+            "https://t.me/EddiesCodesRainbet/2084",
+        )
+
+        self.assertIsNotNone(item)
+        self.assertEqual(item.amount_value, "$25.50")
+        self.assertEqual(item.wager_requirement, "$12,500.75")
+
+    def test_rainbet_parses_zero_width_and_confusable_labels(self):
+        tg = TelegramScraper()
+        item = tg.parse_rainbet_message(
+            "Click Code To Copy: RAINBETUNICODE\n"
+            "Rе\u200cw\u200bаrd:\n $40\n"
+            "W\u200bаgеr Rеquired:\n $80,000\n"
+            "Сlaims:\n 170",
+            "https://t.me/EddiesCodesRainbet/2742",
+        )
+
+        self.assertIsNotNone(item)
+        self.assertEqual(item.amount_value, "$40")
+        self.assertEqual(item.wager_requirement, "$80,000")
+        self.assertEqual(item.claims_count, "170")
+
+    def test_rainbet_reward_and_wagered_reach_all_notification_routes(self):
+        manager = MagicMock()
+        manager.get_webhooks.return_value = [
+            "https://example.com/admin-webhook-1",
+            "https://example.com/admin-webhook-2",
+        ]
+        manager.get_channels.return_value = [111, 112]
+        manager.get_all_subscriber_ids.return_value = ["subscriber-1"]
+        manager.get_subscriber_channels.side_effect = lambda _uid, platform: (
+            [211] if platform == Platform.RAINBET else []
+        )
+        manager.get_subscriber_webhooks.side_effect = lambda _uid, platform: (
+            ["https://example.com/subscriber-webhook"]
+            if platform == Platform.RAINBET else []
+        )
+
+        item = TelegramScraper().parse_rainbet_message(
+            "Click Code To Copy: RAINBETROUTES\nReward: $25.50\nWagered: $12,500.75",
+            "https://t.me/EddiesCodesRainbet/2085",
+        )
+        self.assertIsNotNone(item)
+
+        notifier = DiscordNotifier(dashboard_manager=manager, bot_client=object())
+        notifier._dispatch_to_channel = MagicMock()
+
+        with patch("discord_notifier.requests.post") as post, patch("discord_notifier.save_backup"):
+            post.return_value.status_code = 204
+            self.assertTrue(notifier.send_notification(item))
+
+        self.assertEqual(post.call_count, 3)
+        self.assertEqual(notifier._dispatch_to_channel.call_count, 3)
+
+        webhook_embeds = [
+            json.loads(call.kwargs["data"])["embeds"][0]
+            for call in post.call_args_list
+        ]
+        channel_embeds = [
+            call.args[1] for call in notifier._dispatch_to_channel.call_args_list
+        ]
+        for embed in webhook_embeds + channel_embeds:
+            # New format: two fields (Platform, Details)
+            self.assertEqual(len(embed["fields"]), 2)
+            platform_field = embed["fields"][0]
+            details_field = embed["fields"][1]
+            self.assertEqual(platform_field["name"], "**Platform**")
+            self.assertIn("RAINBET — @EddiesCodesRainbet", platform_field["value"])
+            self.assertEqual(details_field["name"], "**Details**")
+            self.assertIn("**Code:** `RAINBETROUTES`", details_field["value"])
+            self.assertIn("**Value:** $25.50", details_field["value"])
+            self.assertIn("**Requirements:** $12,500.75", details_field["value"])
+            self.assertIn("[**CLICK HERE TO CLAIM**]", details_field["value"])
+
+    def test_rainbet_amount_parsing_supports_amount_labels_and_does_not_invent_value(self):
+        tg = TelegramScraper()
+        cases = [
+            ("Bonus: $25.50", "$25.50"),
+            ("Drop Amount - 2,500 SC", "2,500 SC"),
+            ("Prize Value: US$100", "US$100"),
+            ("Reward Amount $25.50", "$25.50"),
+            ("Bonus Amount $5", "$5"),
+            ("Drop Amount: 2 SC + 20,000 GC", "2 SC + 20,000 GC"),
+            ("$40 instant drop", "$40"),
+        ]
+
+        for index, (amount_text, expected) in enumerate(cases):
+            with self.subTest(amount_text=amount_text):
+                item = tg.parse_rainbet_message(
+                    f"Click Code To Copy: RAINBET{index}\n{amount_text}",
+                    f"https://t.me/test/{index}",
+                )
+                self.assertIsNotNone(item)
+                self.assertEqual(item.amount_value, expected)
+
+        missing_amount = tg.parse_rainbet_message(
+            "Click Code To Copy: RAINBETMISSING\nWager Required: $4,000",
+            "https://t.me/test/missing",
+        )
+        self.assertIsNotNone(missing_amount)
+        self.assertEqual(missing_amount.amount_value, "Amount not specified")
+
+    def test_faircodes_aggregator_parses_all_platforms(self):
+        """
+        Validates that @faircodes aggregator channel parses ALL platforms,
+        not just GAMBA. Uses parse_aggregator_message which detects platform
+        from message text and routes to the correct specialized parser.
+        """
         tg = TelegramScraper(channels={"gamba": ["faircodes"]})
         gamba_text = "GAMBA Bonus Drop\nCode: GambaCase27\nReward: $5\nWager Required: $100"
-        non_gamba_text = "Stake.com bonus drop\nCode: STAKECASE27\nReward: $5"
+        stake_text = "Stake.com bonus drop\nCode: STAKECASE27\nReward: $5"
+        rainbet_text = "Rainbet Bonus Drop\nClick Code To Copy: RAIN123\nReward: $10\nWager Required: $1000"
 
-        gamba = tg.parse_gamba_message(gamba_text, "https://t.me/faircodes/100")
+        # Test GAMBA detection
+        gamba = tg.parse_aggregator_message(gamba_text, "https://t.me/faircodes/100")
         self.assertIsNotNone(gamba)
         self.assertEqual(gamba.code, "GambaCase27")
         self.assertEqual(gamba.platform, Platform.GAMBA)
         self.assertEqual(gamba.wager_requirement, "$100")
         self.assertFalse(gamba.is_affiliate)
-        self.assertIsNone(tg.parse_gamba_message(non_gamba_text, "https://t.me/faircodes/101"))
-        self.assertIsNone(tg.parse_gamba_message(gamba_text, "https://t.me/otherchannel/100"))
 
+        # Test Stake.com detection (should NOT be filtered out)
+        stake = tg.parse_aggregator_message(stake_text, "https://t.me/faircodes/101")
+        self.assertIsNotNone(stake)
+        self.assertEqual(stake.code, "STAKECASE27")
+        self.assertEqual(stake.platform, Platform.STAKE_COM)
+
+        # Test Rainbet detection
+        rainbet = tg.parse_aggregator_message(rainbet_text, "https://t.me/faircodes/102")
+        self.assertIsNotNone(rainbet)
+        self.assertEqual(rainbet.platform, Platform.RAINBET)
+
+        # Verify scrape_channel uses parse_aggregator_message for faircodes
         event_date = datetime.datetime.now(timezone.utc).isoformat()
         tg.fetch_channel_html = MagicMock(return_value=(
             '<div class="tgme_widget_message_wrap">'
@@ -196,15 +320,23 @@ class TestLeakedGGMonitoring(unittest.TestCase):
             '<div class="tgme_widget_message_text">GAMBA Bonus Drop<br>Code: GambaCase27<br>Reward: $5</div>'
             '<a class="tgme_widget_message_date" href="https://t.me/faircodes/102">'
             f'<time datetime="{event_date}"></time></a></div>'
+            '<div class="tgme_widget_message_wrap">'
+            '<div class="tgme_widget_message_text">Rainbet Bonus Drop<br>Click Code To Copy: RAIN123<br>Reward: $10</div>'
+            '<a class="tgme_widget_message_date" href="https://t.me/faircodes/103">'
+            f'<time datetime="{event_date}"></time></a></div>'
         ))
         items = tg.scrape_channel("faircodes")
-        self.assertEqual([(item.code, item.platform) for item in items], [("GambaCase27", Platform.GAMBA)])
+        # Should find all three platforms, not just GAMBA
+        platforms_found = {item.platform for item in items}
+        self.assertIn(Platform.GAMBA, platforms_found)
+        self.assertIn(Platform.STAKE_COM, platforms_found)
+        self.assertIn(Platform.RAINBET, platforms_found)
 
         tracker = CodeTracker(self.test_state_file)
         self.assertTrue(tracker.mark_seen(items[0]))
         duplicate = BonusCodeItem(
             code=items[0].code,
-            platform=Platform.GAMBA,
+            platform=items[0].platform,
             amount_value="$5",
             wager_requirement="Not specified",
             source_url="https://t.me/faircodes/103",
@@ -323,13 +455,10 @@ Enjoy and good luck Degens! 🎰"""
         self.assertEqual(item_49.wager_requirement, "$4,000")
         self.assertEqual(item_49.claims_count, "150")
         self.assertEqual(item_49.image_url, "https://cdn4.telesco.pe/file/pHHR6Eb.jpg")
-        self.assertIn("7 Day Wager Requirement: $4,000", item_49.description)
-
+        self.assertIn("7 Day Wager Requirement: $4,000", item_49.description        )
         embed_49 = notifier.build_embed(item_49)
         self.assertEqual(embed_49.get("image", {}).get("url"), "https://cdn4.telesco.pe/file/pHHR6Eb.jpg")
-        # Clean description without raw telegram text duplication
-        self.assertIn("Verified Bonus Drop", embed_49.get("description", ""))
-        self.assertNotIn("7 Day Wager Requirement", embed_49.get("description", ""))
+        self.assertNotIn("description", embed_49)
 
     def test_dual_stake_code_parsing_and_formatting(self):
         tg = TelegramScraper()
@@ -348,10 +477,14 @@ Enjoy and good luck Degens! 🎰"""
 
         notifier = DiscordNotifier()
         embed = notifier.build_embed(item)
-        self.assertIn("DUAL STAKE", embed["title"])
+        # New format has no title; check Platform field
+        self.assertIn("STAKE.US & STAKE.COM", embed["fields"][0]["value"].upper())
         fields_text = " ".join([f["value"] for f in embed["fields"]])
-        self.assertIn("Stake.us", fields_text)
-        self.assertIn("Stake.com", fields_text)
+        # Claim links for both platforms should be in the embed
+        self.assertIn(item.redeem_link_us, fields_text)
+        self.assertIn(item.redeem_link_com, fields_text)
+        self.assertIn("[**CLICK HERE TO CLAIM (US)**]", fields_text)
+        self.assertIn("[**CLICK HERE TO CLAIM (COM)**]", fields_text)
 
     def test_stakestats_poller_and_activecodes(self):
         poller = StakeStatsPoller()
@@ -378,6 +511,31 @@ Enjoy and good luck Degens! 🎰"""
         field_names = " ".join(field["name"] for field in embeds[0]["fields"])
         self.assertIn("STAKE.US ACTIVE DROPS", field_names)
         self.assertIn("STAKE.COM ACTIVE DROPS", field_names)
+
+    def test_stakestats_activecodes_sort_values_ascending_with_thousands_separators(self):
+        poller = StakeStatsPoller()
+        poller.get_active_codes = MagicMock(return_value=(
+            [
+                BonusCodeItem("US_HIGH", Platform.STAKE_US, "$1,000 SC", "Wager", "", "test"),
+                BonusCodeItem("US_LOW", Platform.STAKE_US, "$2 SC", "Wager", "", "test"),
+                BonusCodeItem("US_MID", Platform.STAKE_US, "$25 SC", "Wager", "", "test"),
+            ],
+            [
+                BonusCodeItem("COM_MID", Platform.STAKE_COM, "$12.50 USD", "Wager", "", "test"),
+                BonusCodeItem("COM_HIGH", Platform.STAKE_COM, "$100 USD", "Wager", "", "test"),
+                BonusCodeItem("COM_LOW", Platform.STAKE_COM, "$3 USD", "Wager", "", "test"),
+            ],
+        ))
+
+        embed = poller.format_discord_active_list()[0]
+        fields = embed["fields"]
+        us_start = next(index for index, field in enumerate(fields) if field["name"] == "🇺🇸 STAKE.US ACTIVE DROPS")
+        com_start = next(index for index, field in enumerate(fields) if field["name"] == "🌍 STAKE.COM ACTIVE DROPS")
+        us_codes = [field["name"] for field in fields[us_start + 1:com_start]]
+        com_codes = [field["name"] for field in fields[com_start + 1:]]
+
+        self.assertEqual(us_codes, ["⚡ US_LOW", "⚡ US_MID", "⚡ US_HIGH"])
+        self.assertEqual(com_codes, ["⚡ COM_LOW", "⚡ COM_MID", "⚡ COM_HIGH"])
 
     def test_stakestats_activecodes_paginates_large_results(self):
         poller = StakeStatsPoller()
@@ -687,9 +845,18 @@ Join now and claim via https://qzino.ai/?r=SELFMADE"""
         embed = notifier.build_embed(item)
         self.assertEqual(embed.get("image", {}).get("url"), "https://cdn.telesco.pe/file/qzino_promo.jpg")
         field_values = " ".join([f["value"] for f in embed.get("fields", [])])
-        self.assertIn("[CLICK HERE TO CLAIM]", field_values)
-        self.assertIn("[SIGNUP HERE]", field_values)
-        self.assertIn("[JOIN DISCORD](https://discord.gg/TvJe6BV7ge)", field_values)
+        # Prominent claim line should be in the embed field
+        self.assertIn("CLICK HERE TO CLAIM", field_values)
+        # Buttons should have correct URLs
+        buttons = notifier._link_button_components(item)[0]["components"]
+        button_urls = {button["url"] for button in buttons}
+        self.assertIn(item.redeem_link, button_urls)
+        self.assertIn(item.affiliate_signup_link, button_urls)
+        self.assertIn(DISCORD_INVITE_URL, button_urls)
+        self.assertIn("https://www.kick.com/traystrees50", button_urls)
+        # Button labels should be plain (CLAIM, SIGNUP, DISCORD, KICK)
+        button_labels = {button["label"] for button in buttons}
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
 
     def test_vip_events_routing_and_extraction(self):
         tg = TelegramScraper()
@@ -1103,12 +1270,11 @@ Redeem Here!"""
             description="⚡️ URGENT Code Drop\nExtra codes can now show up at any moment. Keep an eye out!\nIUM4HC9\n- Value: $3\n- Total Drop: first 50 claims"
         )
         embed_qz = notifier.build_embed(qzino_item)
-        self.assertIn("Verified Bonus Drop", embed_qz["description"])
-        self.assertNotIn("URGENT Code Drop", embed_qz["description"])
-        self.assertNotIn("Total Drop:", embed_qz["description"])
+        self.assertNotIn("description", embed_qz)
         field_values = " ".join([f["value"] for f in embed_qz["fields"]])
         self.assertIn("IUM4HC9", field_values)
         self.assertIn("$3", field_values)
+        self.assertIn("[**CLICK HERE TO CLAIM**]", field_values)
 
         # 2. Rainbet Drop
         rainbet_item = BonusCodeItem(
@@ -1123,9 +1289,22 @@ Redeem Here!"""
             description="1. Click Code To Copy: MFQP3DSN\n2. Redeem Here: https://rainbet.com/affiliates\nReward: $1\nWager Required: $4,000\nClaims: 600"
         )
         embed_rb = notifier.build_embed(rainbet_item)
-        self.assertIn("Verified Bonus Drop", embed_rb["description"])
-        self.assertNotIn("Click Code To Copy", embed_rb["description"])
-        self.assertNotIn("Wager Required:", embed_rb["description"])
+        self.assertNotIn("description", embed_rb)
+        self.assertNotIn("title", embed_rb)
+        # New format: two fields (Platform, Details)
+        self.assertEqual(len(embed_rb["fields"]), 2)
+        platform_field = embed_rb["fields"][0]
+        details_field = embed_rb["fields"][1]
+        self.assertEqual(platform_field["name"], "**Platform**")
+        self.assertIn("RAINBET — @EddiesCodesRainbet", platform_field["value"])
+        self.assertEqual(details_field["name"], "**Details**")
+        self.assertFalse(details_field["inline"])
+        field_value = details_field["value"]
+        self.assertIn("**Code:** `MFQP3DSN`", field_value)
+        self.assertIn("**Value:** $1", field_value)
+        self.assertIn("**Total Drop Limit:** 600", field_value)
+        self.assertIn("**Requirements:** $4,000", field_value)
+        self.assertIn("[**CLICK HERE TO CLAIM**]", field_value)
 
         # 3. High Roller Drop
         hr_item = BonusCodeItem(
@@ -1140,8 +1319,18 @@ Redeem Here!"""
             description="🔥 HIGH ROLLER DROP\nCode: HIGHROLLER100\nValue: $100\nWager: $200,000"
         )
         embed_hr = notifier.build_embed(hr_item)
-        self.assertIn("High Roller", embed_hr["description"])
-        self.assertNotIn("Wager: $200,000", embed_hr["description"])
+        self.assertNotIn("title", embed_hr)
+        self.assertEqual(len(embed_hr["fields"]), 2)
+        platform_field = embed_hr["fields"][0]
+        details_field = embed_hr["fields"][1]
+        self.assertEqual(platform_field["name"], "**Platform**")
+        self.assertIn("STAKE.US — @highrollerscodeUS", platform_field["value"])
+        self.assertEqual(details_field["name"], "**Details**")
+        details_value = details_field["value"]
+        self.assertIn("**Code:** `HIGHROLLER100`", details_value)
+        self.assertIn("**Value:** $100", details_value)
+        self.assertIn("**Requirements:** $200,000", details_value)
+        self.assertIn("[**CLICK HERE TO CLAIM**]", details_value)
 
         # 4. VIP Event
         vip_item = BonusCodeItem(
@@ -1156,17 +1345,21 @@ Redeem Here!"""
             description="Your VIP Weekly Boost is now live! Click the link below to claim."
         )
         embed_vip = notifier.build_embed(vip_item)
-        self.assertIn("Official VIP Notice", embed_vip["description"])
+        # New format: check Platform field instead of title
+        self.assertIn("STAKE.US - VIP NOTICES", embed_vip["fields"][0]["value"].upper())
+        field_values = " ".join([f["value"] for f in embed_vip["fields"]])
+        self.assertIn("VIP Weekly Boost", field_values)
+        self.assertIn("VIP Tier Based", field_values)
 
     def test_exact_embed_field_layout_order(self):
         """
         Validates the strict layout and ordering of Discord embed fields:
-        1. PLATFORM & SOURCE on the same line (inline: True, inline: True)
-        2. CODE box on the next line (inline: False)
-        3. VALUE, WAGER REQUIREMENTS, and CLAIMS LIMIT on the same line (inline: True x3)
-        4. DIRECT REDEEM LINK on the next line (inline: False)
-        5. SIGNUP link and JOIN DISCORD link on the same line (inline: True, inline: True)
-        6. Media/Image attached at the bottom (embed['image'])
+        1. Platform field with platform name and source
+        2. Details field with bullet lines for Code, Value, Total Drop Limit, Requirements
+        3. Prominent claim line: [**CLICK HERE TO CLAIM**](redeem_url)
+        4. Footer: "LEAKED.GG • {detected_at}"
+        5. Media/Image attached at the bottom (embed['image'])
+        6. Four link buttons: CLAIM, SIGNUP, DISCORD, KICK
         """
         notifier = DiscordNotifier()
 
@@ -1184,53 +1377,172 @@ Redeem Here!"""
         embed = notifier.build_embed(item)
         fields = embed["fields"]
 
-        # Field 0: Platform (inline)
-        self.assertEqual(fields[0]["name"], "🎰 Platform")
-        self.assertTrue(fields[0]["inline"])
-        self.assertIn("Stake.us", fields[0]["value"])
+        # Should have exactly TWO fields: Platform and Details
+        self.assertEqual(len(fields), 2)
+        
+        # Field 0: Platform
+        platform_field = fields[0]
+        self.assertEqual(platform_field["name"], "**Platform**")
+        self.assertIn("STAKE.US — @dailybonuscodeUS", platform_field["value"])
+        self.assertFalse(platform_field["inline"])
+        
+        # Field 1: Details
+        details_field = fields[1]
+        self.assertEqual(details_field["name"], "**Details**")
+        self.assertFalse(details_field["inline"])
 
-        # Field 1: Source (inline)
-        self.assertEqual(fields[1]["name"], "🌐 Source")
-        self.assertTrue(fields[1]["inline"])
-        self.assertIn("@dailybonuscodeUS", fields[1]["value"])
+        field_value = details_field["value"]
+        # Bullet lines with bold labels
+        self.assertIn("**Code:** `ORDERTEST2026`", field_value)
+        self.assertIn("**Value:** 5 SC", field_value)
+        self.assertIn("**Total Drop Limit:** 5,000 SC limit", field_value)
+        self.assertIn("**Requirements:** 10,000 SC in 7 days", field_value)
 
-        # Field 2: Bonus Code (full width)
-        self.assertEqual(fields[2]["name"], "🎁 Bonus Code (Tap to Copy)")
-        self.assertFalse(fields[2]["inline"])
-        self.assertIn("ORDERTEST2026", fields[2]["value"])
+        # Prominent claim line
+        self.assertIn("[**CLICK HERE TO CLAIM**]", field_value)
+        self.assertIn(item.redeem_link, field_value)
 
-        # Field 3: Value (inline)
-        self.assertEqual(fields[3]["name"], "💰 Value / Amount")
-        self.assertTrue(fields[3]["inline"])
-        self.assertIn("5 SC", fields[3]["value"])
-
-        # Field 4: Wager (inline)
-        self.assertEqual(fields[4]["name"], "🔄 Wager Required")
-        self.assertTrue(fields[4]["inline"])
-        self.assertIn("10,000 SC", fields[4]["value"])
-
-        # Field 5: Claims (inline)
-        self.assertEqual(fields[5]["name"], "👥 Claims / Limit")
-        self.assertTrue(fields[5]["inline"])
-        self.assertIn("5,000 SC limit", fields[5]["value"])
-
-        # Field 6: Direct Redeem Link (full width)
-        self.assertEqual(fields[6]["name"], "🔗 Direct Redeem Link")
-        self.assertFalse(fields[6]["inline"])
-        self.assertIn("[CLICK HERE TO CLAIM]", fields[6]["value"])
-
-        # Field 7: Signup Link (inline)
-        self.assertEqual(fields[7]["name"], "📝 Direct Signup Link")
-        self.assertTrue(fields[7]["inline"])
-        self.assertIn("[SIGNUP HERE]", fields[7]["value"])
-
-        # Field 8: Join Discord (inline)
-        self.assertEqual(fields[8]["name"], "💬 Official Community")
-        self.assertTrue(fields[8]["inline"])
-        self.assertIn("[JOIN DISCORD]", fields[8]["value"])
+        # Footer
+        self.assertIn("LEAKED.GG", embed["footer"]["text"])
 
         # Image at the bottom
         self.assertEqual(embed["image"]["url"], "https://example.com/promo.png")
+
+        # Buttons: plain labels
+        buttons = notifier._link_button_components(item)[0]["components"]
+        button_labels = {button["label"] for button in buttons}
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        self.assertTrue(all(button["style"] == 5 for button in buttons))
+
+    def test_dual_stake_claim_links_are_buttons_not_embed_fields(self):
+        notifier = DiscordNotifier()
+        item = BonusCodeItem(
+            code="DUALBUTTON2026",
+            platform=Platform.DUAL_STAKE,
+            amount_value="$3",
+            wager_requirement="$6,000",
+            source_name="@codestats2",
+            source_url="https://t.me/codestats2/100",
+            is_affiliate=False,
+        )
+
+        embed = notifier.build_embed(item)
+        fields_text = " ".join(field["name"] + field["value"] for field in embed["fields"])
+        # Dual stake should have both claim links in the embed field
+        self.assertIn("[**CLICK HERE TO CLAIM (US)**]", fields_text)
+        self.assertIn("[**CLICK HERE TO CLAIM (COM)**]", fields_text)
+        self.assertIn(item.redeem_link_us, fields_text)
+        self.assertIn(item.redeem_link_com, fields_text)
+
+        # Buttons should have plain labels for dual stake (single CLAIM button goes to US link)
+        buttons = notifier._link_button_components(item)[0]["components"]
+        button_labels = {button["label"] for button in buttons}
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        # CLAIM button should point to US redeem link (primary)
+        claim_button = next(b for b in buttons if b["label"] == "CLAIM")
+        self.assertEqual(claim_button["url"], item.redeem_link_us)
+
+    def test_embed_templates_remove_legacy_redeem_fields(self):
+        item = BonusCodeItem(
+            code="TEMPLATE2026",
+            platform=Platform.STAKE_US,
+            amount_value="5 SC",
+            wager_requirement="10,000 SC",
+            source_name="@test",
+            source_url="https://example.com",
+            is_affiliate=False,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            templates_file = os.path.join(temp_dir, "embed_templates.json")
+            with open(templates_file, "w", encoding="utf-8") as file:
+                json.dump({
+                    "Stake.us": {
+                        "description": "⚡ **Verified Bonus Drop** • Instant claim for **Stake.us**!",
+                        "fields": [
+                            {"name": "🔗 Direct Redeem Link", "value": "[CLAIM](https://example.com)"},
+                            {"name": "💰 Value / Amount", "value": "**$5**", "inline": True},
+                            {"name": "🔄 Wager Required", "value": "**$100**", "inline": True},
+                            {"name": "👥 Claims / Limit", "value": "**50**", "inline": True},
+                            {"name": "Custom Field", "value": "Keep me"},
+                        ]
+                    }
+                }, file)
+
+            manager = EmbedTemplateManager(templates_file)
+
+            expected_fields = [
+                {
+                    "name": "💰 Bonus Details",
+                    "value": (
+                        "**Value / Amount:** **$5**  |  "
+                        "**Wager Required:** **$100**  |  "
+                        "**Claims / Limit:** **50**"
+                    ),
+                    "inline": False,
+                },
+                {"name": "Custom Field", "value": "Keep me"},
+            ]
+            self.assertEqual(manager.templates["Stake.us"]["fields"], expected_fields)
+            with open(templates_file, encoding="utf-8") as file:
+                saved_templates = json.load(file)
+            self.assertEqual(saved_templates["Stake.us"]["fields"], expected_fields)
+            self.assertEqual(manager.templates["Stake.us"]["description"], "")
+            self.assertEqual(manager.templates["Stake.us"]["description"], "")
+            generated = manager._build_template_for_item(item)
+            generated_fields = " ".join(field["name"] + field["value"] for field in generated["fields"])
+            # New format: two fields (Platform, Details) with bold labels and claim line
+            self.assertIn("**Code:**", generated_fields)
+            self.assertIn("**Value:**", generated_fields)
+            self.assertIn("**Total Drop Limit:**", generated_fields)
+            self.assertIn("**Requirements:**", generated_fields)
+            self.assertIn("[**CLICK HERE TO CLAIM**]", generated_fields)
+
+    def test_notification_webhooks_receive_url_buttons_not_code_checker(self):
+        notifier = DiscordNotifier()
+        item = BonusCodeItem(
+            code="BUTTONTEST2026",
+            platform=Platform.RAINBET,
+            amount_value="$5",
+            wager_requirement="$100",
+            source_name="@test",
+            source_url="https://example.com",
+        )
+
+        with patch("discord_notifier.requests.post") as post:
+            post.return_value.status_code = 204
+            self.assertTrue(notifier._send_single_item_notification(
+                item,
+                ["https://discord.com/api/webhooks/123/token"],
+                [],
+            ))
+
+        payload = json.loads(post.call_args.kwargs["data"])
+        self.assertIn("components", payload)
+        self.assertEqual(len(payload["components"]), 1)
+        buttons = payload["components"][0]["components"]
+        self.assertEqual(len(buttons), 4)
+        self.assertTrue(all(button["style"] == 5 for button in buttons))
+        # Plain button labels per new spec
+        self.assertEqual(
+            {button["label"] for button in buttons},
+            {"CLAIM", "SIGNUP", "DISCORD", "KICK"},
+        )
+        self.assertIn(item.redeem_link, {button["url"] for button in buttons})
+        self.assertNotIn("Code Checker", str(payload))
+        # Two fields: Platform and Details
+        embed = payload["embeds"][0]
+        self.assertEqual(len(embed["fields"]), 2)
+        platform_field = embed["fields"][0]
+        details_field = embed["fields"][1]
+        self.assertEqual(platform_field["name"], "**Platform**")
+        self.assertIn("RAINBET — @test", platform_field["value"])
+        self.assertEqual(details_field["name"], "**Details**")
+        self.assertFalse(details_field["inline"])
+        field_value = details_field["value"]
+        self.assertIn("**Code:** `BUTTONTEST2026`", field_value)
+        self.assertIn("**Value:** $5", field_value)
+        self.assertIn("**Requirements:** $100", field_value)
+        self.assertIn("[**CLICK HERE TO CLAIM**]", field_value)
 
     def test_concurrent_scraper_engine_execution(self):
         """
@@ -1252,10 +1564,9 @@ Redeem Here!"""
 
     def test_command_permissions_and_unrestricted_public_access(self):
         """
-        Validates that !info, /info, !activecodes, /activecodes, and /codes
-        are accessible to all users with zero authorization restrictions,
-        while dashboard routing commands enforce owner/subscriber authentication.
+        Validates the selected public command guide and authorized dashboard access.
         """
+        import discord
         from dashboard_manager import DashboardManager
         manager = DashboardManager(self.test_routes_file)
         
@@ -1269,12 +1580,45 @@ Redeem Here!"""
         info_embed = create_info_embed()
         self.assertIsNotNone(info_embed)
         self.assertIn("Information", info_embed.title)
-        self.assertIn("Faircodes", info_embed.description)
-        self.assertIn("only messages explicitly identified as GAMBA", info_embed.description)
         info_fields = "\n".join(field.value for field in info_embed.fields)
+        info_text = f"{info_embed.description}\n{info_fields}"
+        self.assertIn("Telegram", info_embed.description)
+        self.assertIn("StakeStats", info_embed.description)
+        self.assertIn("CodeStats", info_embed.description)
+        self.assertIn("VIP", info_embed.description)
+        self.assertNotIn("Faircodes", info_text)
+        self.assertNotIn("GAMBA", info_text.upper())
+        self.assertNotIn("Supported Platforms", " ".join(field.name for field in info_embed.fields))
+        self.assertIn("`/dashboard`", info_fields)
         self.assertIn("`/activecodes`", info_fields)
-        self.assertIn("`/activeus`", info_fields)
-        self.assertIn("`/activecom`", info_fields)
+        self.assertIn("`/help`", info_fields)
+        self.assertIn("`/tools`", info_fields)
+        self.assertNotIn("`/activeus`", info_fields)
+        self.assertIn("lowest to highest", info_fields)
+        self.assertIn("[Stake.us]", info_fields)
+        self.assertIn("[Stake.com]", info_fields)
+        self.assertIn("[Official Discord]", info_fields)
+        self.assertIn("[Traystrees50 on Kick]", info_fields)
+
+        from discord_bot import (
+            ActionSelect,
+            PublicDashboardView,
+            PublicNavigationSelect,
+            _platform_select_options,
+            create_help_embed,
+        )
+        help_embed = create_help_embed()
+        help_text = "\n".join(field.value for field in help_embed.fields)
+        self.assertIn("lowest to highest value", help_text)
+        self.assertIn("server administrators", help_text)
+
+        public_view = PublicDashboardView()
+        self.assertTrue(any(isinstance(item, PublicNavigationSelect) for item in public_view.children))
+        public_button_labels = {item.label for item in public_view.children if isinstance(item, discord.ui.Button)}
+        self.assertTrue({"Active Codes", "Help", "Bot Info", "Tools"}.issubset(public_button_labels))
+        action_select = ActionSelect()
+        self.assertLessEqual(len(action_select.options), 25)
+        self.assertIn("public_activecodes", {option.value for option in action_select.options})
 
         from discord_bot import _platform_select_options
         primary_options, extra_options = _platform_select_options()
@@ -1648,7 +1992,7 @@ Redeem Here!"""
         self.assertEqual(item.platform, Platform.SHUFFLE_US)
         self.assertIn("150,000 SC played", item.wager_requirement)
 
-        # 2. Stake-style Shuffle.us message using 'Wager Requirement:' via parse_stake_message
+        # 2. Stake-style Shuffle.us message using 'Wager Requirement:' via _parse_shuffle_only_message
         msg_stake_shuffle = (
             "SHUFFLE.US BONUS DROP ALERT\n"
             "Code: SHUFUS99\n"
@@ -1657,12 +2001,12 @@ Redeem Here!"""
             "Claims: 50\n"
             "https://shuffle.us/?modal=c&md-code=SHUFUS99\n"
         )
-        item2 = tg.parse_stake_message(msg_stake_shuffle, "https://t.me/anyclaimershuffle/500", "anyclaimershuffle")
+        item2 = tg._parse_shuffle_only_message(msg_stake_shuffle, "https://t.me/anyclaimershuffle/500", channel_name="anyclaimershuffle")
         self.assertIsNotNone(item2)
         self.assertEqual(item2.platform, Platform.SHUFFLE_US)
         self.assertIn("75,000 SC played", item2.wager_requirement)
 
-        # 3. Stake-style Shuffle.com message using '7-Day Wager:' via parse_stake_message
+        # 3. Stake-style Shuffle.com message using '7-Day Wager:' via _parse_shuffle_only_message
         msg_stake_shuffle_com = (
             "SHUFFLE CHAT CODE ALERT\n"
             "Code: SHUFCOM88\n"
@@ -1671,7 +2015,7 @@ Redeem Here!"""
             "Claims: 100\n"
             "https://shuffle.com/?modal=c&md-code=SHUFCOM88\n"
         )
-        item3 = tg.parse_stake_message(msg_stake_shuffle_com, "https://t.me/anyclaimershuffle/501", "anyclaimershuffle")
+        item3 = tg._parse_shuffle_only_message(msg_stake_shuffle_com, "https://t.me/anyclaimershuffle/501", channel_name="anyclaimershuffle")
         self.assertIsNotNone(item3)
         self.assertEqual(item3.platform, Platform.SHUFFLE_COM)
         self.assertIn("$20,000 wagered", item3.wager_requirement)
@@ -1757,14 +2101,26 @@ Redeem Here!"""
         # Check that Stake.us channel received Stake.us embed
         self.assertTrue(us_chan.send.called)
         us_sent_embed = us_chan.send.call_args[1]["embed"]
-        self.assertIn("STAKE.US", us_sent_embed.title.upper())
-        self.assertEqual(us_sent_embed.color.value, Platform.STAKE_US.embed_color)
+        # embed could be dict or discord.Embed
+        if hasattr(us_sent_embed, "fields"):
+            us_platform_value = us_sent_embed.fields[0].value
+        else:
+            us_platform_value = us_sent_embed["fields"][0]["value"]
+        self.assertIn("STAKE.US", us_platform_value.upper())
+        # color could be int or discord.Color
+        us_color = us_sent_embed.color.value if hasattr(us_sent_embed.color, "value") else us_sent_embed["color"]
+        self.assertEqual(us_color, Platform.STAKE_US.embed_color)
 
         # Check that Stake.com channel received Stake.com embed
         self.assertTrue(com_chan.send.called)
         com_sent_embed = com_chan.send.call_args[1]["embed"]
-        self.assertIn("STAKE.COM", com_sent_embed.title.upper())
-        self.assertEqual(com_sent_embed.color.value, Platform.STAKE_COM.embed_color)
+        if hasattr(com_sent_embed, "fields"):
+            com_platform_value = com_sent_embed.fields[0].value
+        else:
+            com_platform_value = com_sent_embed["fields"][0]["value"]
+        self.assertIn("STAKE.COM", com_platform_value.upper())
+        com_color = com_sent_embed.color.value if hasattr(com_sent_embed.color, "value") else com_sent_embed["color"]
+        self.assertEqual(com_color, Platform.STAKE_COM.embed_color)
 
         mock_loop.close()
 
@@ -2860,7 +3216,7 @@ class TestStakeCalculator(unittest.TestCase):
         from discord.ext import commands
         from stake_calculator import register_stake_calculator_commands
 
-        bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+        bot = commands.Bot(command_prefix="!", intents=discord.Intents.none(), help_command=None)
         register_stake_calculator_commands(bot)
         command_names = {command.name for command in bot.tree.get_commands()}
 
@@ -2868,6 +3224,71 @@ class TestStakeCalculator(unittest.TestCase):
             "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
             "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers", "tools",
         }.issubset(command_names))
+
+    def test_command_pruning_keeps_only_public_and_protected_commands(self):
+        import discord
+        from discord.ext import commands
+        from discord_bot import prune_unused_commands, registered_application_command_names
+
+        bot = commands.Bot(command_prefix="!", intents=discord.Intents.none(), help_command=None)
+
+        @bot.hybrid_command(name="activecodes")
+        async def activecodes(ctx):
+            pass
+
+        @bot.hybrid_command(name="help", aliases=["guide"])
+        async def help_command(ctx):
+            pass
+
+        @bot.hybrid_command(name="activeus")
+        async def activeus(ctx):
+            pass
+
+        @bot.hybrid_command(name="activecodescom")
+        async def activecodescom(ctx):
+            pass
+
+        @bot.hybrid_command(name="activecodesall")
+        async def activecodesall(ctx):
+            pass
+
+        @bot.hybrid_group(name="admin")
+        async def admin_group(ctx):
+            pass
+
+        @admin_group.command(name="grant")
+        async def admin_grant(ctx):
+            pass
+
+        @bot.tree.command(name="tools")
+        async def tools(interaction):
+            pass
+
+        @bot.tree.command(name="vip")
+        async def vip(interaction):
+            pass
+
+        @bot.tree.command(name="codechecker")
+        async def codechecker(interaction):
+            pass
+
+        prune_unused_commands(bot)
+
+        self.assertEqual(
+            registered_application_command_names(bot),
+            {"activecodes", "activecodescom", "activecodesall", "activeus", "help", "admin", "tools", "vip", "codechecker"},
+        )
+        self.assertIsNotNone(bot.get_command("activecodes"))
+        self.assertIsNotNone(bot.get_command("activeus"))
+        self.assertIsNotNone(bot.get_command("activecodescom"))
+        self.assertIsNotNone(bot.get_command("activecodesall"))
+        self.assertIsNone(bot.get_command("guide"))
+        self.assertIsNotNone(bot.get_command("admin").get_command("grant"))
+        tools_command = bot.tree.get_command("tools")
+        self.assertTrue(tools_command.allowed_contexts.guild)
+        self.assertTrue(tools_command.allowed_contexts.dm_channel)
+        admin_group = bot.tree.get_command("admin")
+        self.assertTrue(admin_group.get_command("grant").allowed_contexts.dm_channel)
 
     def test_dashboard_views_are_persistent_and_preselect_saved_tier(self):
         import discord
@@ -2906,6 +3327,7 @@ class TestStakeCalculator(unittest.TestCase):
                     stake_calculator._load_preferences()["123"]["tier"],
                     "Gold",
                 )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -214,8 +214,13 @@ class StakeStatsPoller:
         all_items = active_us + active_com
 
         def _extract_numeric(val_str: str) -> float:
-            m = _re.search(r"\$?([\d.]+)", val_str or "")
-            return float(m.group(1)) if m else 0.0
+            match = _re.search(
+                r"(?<![\w])\$?\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)",
+                val_str or "",
+            )
+            if not match:
+                return 0.0
+            return float(match.group(1).replace(",", ""))
 
         all_items.sort(key=lambda item: _extract_numeric(item.amount_value))
 
