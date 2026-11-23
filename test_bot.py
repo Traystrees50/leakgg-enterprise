@@ -244,7 +244,7 @@ class TestLeakedGGMonitoring(unittest.TestCase):
             platform_field = embed["fields"][0]
             details_field = embed["fields"][1]
             self.assertEqual(platform_field["name"], "**Platform**")
-            self.assertIn("RAINBET — @EddiesCodesRainbet", platform_field["value"])
+            self.assertIn("RAINBET  NEW DROP DETECTED", platform_field["value"])
             self.assertEqual(details_field["name"], "**Details**")
             self.assertIn("**Code:** `RAINBETROUTES`", details_field["value"])
             self.assertIn("**Value:** $25.50", details_field["value"])
@@ -1296,7 +1296,7 @@ Redeem Here!"""
         platform_field = embed_rb["fields"][0]
         details_field = embed_rb["fields"][1]
         self.assertEqual(platform_field["name"], "**Platform**")
-        self.assertIn("RAINBET — @EddiesCodesRainbet", platform_field["value"])
+        self.assertIn("RAINBET  NEW DROP DETECTED", platform_field["value"])
         self.assertEqual(details_field["name"], "**Details**")
         self.assertFalse(details_field["inline"])
         field_value = details_field["value"]
@@ -1324,7 +1324,7 @@ Redeem Here!"""
         platform_field = embed_hr["fields"][0]
         details_field = embed_hr["fields"][1]
         self.assertEqual(platform_field["name"], "**Platform**")
-        self.assertIn("STAKE.US — @highrollerscodeUS", platform_field["value"])
+        self.assertIn("STAKE.US  NEW DROP DETECTED", platform_field["value"])
         self.assertEqual(details_field["name"], "**Details**")
         details_value = details_field["value"]
         self.assertIn("**Code:** `HIGHROLLER100`", details_value)
@@ -1383,7 +1383,7 @@ Redeem Here!"""
         # Field 0: Platform
         platform_field = fields[0]
         self.assertEqual(platform_field["name"], "**Platform**")
-        self.assertIn("STAKE.US — @dailybonuscodeUS", platform_field["value"])
+        self.assertIn("STAKE.US  NEW DROP DETECTED", platform_field["value"])
         self.assertFalse(platform_field["inline"])
         
         # Field 1: Details
@@ -1403,7 +1403,7 @@ Redeem Here!"""
         self.assertIn(item.redeem_link, field_value)
 
         # Footer
-        self.assertIn("LEAKED.GG", embed["footer"]["text"])
+        self.assertIn("We Value Responsible Gaming - Leaked.gg", embed["footer"]["text"])
 
         # Image at the bottom
         self.assertEqual(embed["image"]["url"], "https://example.com/promo.png")
@@ -1535,7 +1535,7 @@ Redeem Here!"""
         platform_field = embed["fields"][0]
         details_field = embed["fields"][1]
         self.assertEqual(platform_field["name"], "**Platform**")
-        self.assertIn("RAINBET — @test", platform_field["value"])
+        self.assertIn("RAINBET  NEW DROP DETECTED", platform_field["value"])
         self.assertEqual(details_field["name"], "**Details**")
         self.assertFalse(details_field["inline"])
         field_value = details_field["value"]

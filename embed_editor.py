@@ -178,7 +178,7 @@ class EmbedTemplateManager:
         fields = [
             {
                 "name": "**Platform**",
-                "value": f"{platform_name} — {source_name}",
+                "value": f"{platform_name}  NEW DROP DETECTED",
                 "inline": False,
             },
             {
@@ -191,7 +191,7 @@ class EmbedTemplateManager:
         embed: Dict[str, Any] = {
             "color": color,
             "fields": fields,
-            "footer": {"text": f"LEAKED.GG • {item.detected_at}"},
+            "footer": {"text": "We Value Responsible Gaming - Leaked.gg"},
         }
 
         if item.image_url:
