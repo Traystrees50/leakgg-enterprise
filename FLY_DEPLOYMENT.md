@@ -7,7 +7,13 @@ This bot runs as a single always-on worker; it does not expose a web port. State
 1. Install `flyctl`, sign in with `fly auth login`, and confirm Fly billing in your account.
 2. In the Fly dashboard, create the app named in `fly.toml` if it does not exist. Set `DISCORD_BOT_TOKEN` as a Fly secret and `OWNER_USER_ID` as an environment variable or secret. Add optional Telegram, OCR, or Supabase credentials only if you use those integrations.
 3. Keep the local bot running while preparing the app. Stop the local instance immediately before running `fly deploy`; the hosted process uses the same Discord bot identity.
-4. From the repository directory, run `fly deploy`. If Fly asks for a payment method, add it only in Fly's own account dashboard.
+4. From the repository directory, run the prebuilt image for commit `d7ce9c4`:
+
+   ```powershell
+   fly deploy --image registry.fly.io/leakgg-enterprise-monitor-91f7:deployment-01M83YREKG6XJVZXD4HA07C6VY
+   ```
+
+   This avoids building or uploading unrelated uncommitted workspace changes. If Fly asks for a payment method, add it only in Fly's own account dashboard. Future code updates should be built from a clean checkout and deployed as a new image.
 5. On the first hosted boot, monitoring is paused. With the Fly machine running, seed its persistent deduplication state without sending notifications:
 
    ```powershell
