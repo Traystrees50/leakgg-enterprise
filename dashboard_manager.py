@@ -17,7 +17,7 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-DASHBOARD_CONFIG_FILE = "routes_config.json"
+DASHBOARD_CONFIG_FILE = os.getenv("DASHBOARD_CONFIG_FILE", "routes_config.json")
 
 class DashboardManager:
     """

@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -9,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 logger = logging.getLogger("LeakedGG.StakeCalculator")
-PREFERENCES_FILE = Path("user_prefs.json")
+PREFERENCES_FILE = Path(os.getenv("USER_PREFERENCES_FILE", "user_prefs.json"))
 
 VIP_TIERS = [
     {"name": "Unranked", "threshold": 0, "next": "Bronze", "bonus": 20, "mult": 0.0},

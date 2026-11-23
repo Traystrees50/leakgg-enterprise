@@ -1,0 +1,29 @@
+app = "leakgg-enterprise-monitor-91f7"
+primary_region = "iad"
+kill_signal = "SIGINT"
+kill_timeout = 30
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  STATE_FILE_PATH = "/data/seen_codes.json"
+  DASHBOARD_CONFIG_FILE = "/data/routes_config.json"
+  USER_PREFERENCES_FILE = "/data/user_prefs.json"
+
+[processes]
+  app = "python main.py bot"
+
+[[mounts]]
+  source = "bot_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+
+[[restart]]
+  policy = "always"

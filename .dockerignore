@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.py[cod]
+*.log
+*.tmp
+seen_codes.json
+routes_config.json
+user_prefs.json
+.backup/
+*.tar
