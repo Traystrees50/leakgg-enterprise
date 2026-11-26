@@ -11,6 +11,8 @@ from config import (
     DISCORD_WEBHOOK_DEGEN, DISCORD_WEBHOOK_GOATED, DISCORD_WEBHOOK_WINNA,
     DISCORD_WEBHOOK_THRILL,
     DISCORD_WEBHOOK_GAMBA,
+    DISCORD_WEBHOOK_RAZED,
+    DISCORD_WEBHOOK_RAINBET_US,
     CHECK_INTERVAL_SECONDS, OWNER_USER_ID,
     TELEGRAM_CHANNELS, TARGET_SOURCES, TELEGRAM_PRIVATE_SOURCES
 )
@@ -560,6 +562,8 @@ class DashboardManager:
             Platform.WINNA.value: DISCORD_WEBHOOK_WINNA,
             Platform.THRILL.value: DISCORD_WEBHOOK_THRILL,
             Platform.GAMBA.value: DISCORD_WEBHOOK_GAMBA,
+            Platform.RAZED.value: DISCORD_WEBHOOK_RAZED,
+            Platform.RAINBET_US.value: DISCORD_WEBHOOK_RAINBET_US,
         }
         webhook = env_routes.get(platform_key)
         return webhook.strip() if webhook and webhook.strip() else None
@@ -806,42 +810,20 @@ class DashboardManager:
                 return "qzino"
             if platform_input == Platform.RAINBET:
                 return "rainbet"
+            if platform_input == Platform.RAINBET_US:
+                return "rainbet_us"
+            if platform_input == Platform.RAZED:
+                return "razed"
             if platform_input == Platform.DEGEN:
                 return "degen"
             if platform_input == Platform.GOATED:
                 return "goated"
             if platform_input == Platform.WINNA:
                 return "winna"
-            if platform_input == Platform.MYPRIZE_US:
-                return "myprize_us"
-            if platform_input == Platform.CROWNSCOINS:
-                return "crowncoins"
-            if platform_input == Platform.REALPRIZE:
-                return "realprize"
-            if platform_input == Platform.ACEBET:
-                return "acebet"
-            if platform_input == Platform.LONESTAR:
-                return "lonestar"
-            if platform_input == Platform.CHANCED:
-                return "chanced"
-            if platform_input == Platform.PULSZ:
-                return "pulsz"
             if platform_input == Platform.THRILL:
                 return "thrill"
             if platform_input == Platform.GAMBA:
                 return "gamba"
-            if platform_input == Platform.MODO:
-                return "modo"
-            if platform_input == Platform.BABA:
-                return "baba"
-            if platform_input == Platform.COOKED_US:
-                return "cooked_us"
-            if platform_input == Platform.COOKED_COM:
-                return "cooked_com"
-            if platform_input == Platform.WOWVEGAS:
-                return "wowvegas"
-            if platform_input == Platform.YAYCASINO:
-                return "yaycasino"
             return "custom"
 
         p_str = str(platform_input).strip().lower().replace(".", "_").replace(" ", "_").replace("-", "_")
@@ -857,8 +839,12 @@ class DashboardManager:
             return "shuffle"
         if "qzino" in p_str:
             return "qzino"
+        if "rainbet.us" in p_str or "rainbet_us" in p_str:
+            return "rainbet_us"
         if "rainbet" in p_str:
             return "rainbet"
+        if "razed" in p_str:
+            return "razed"
         if "degen" in p_str:
             return "degen"
         if "goated" in p_str:

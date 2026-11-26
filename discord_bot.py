@@ -2,13 +2,14 @@ import logging
 import asyncio
 import re
 import copy
+import datetime
 from typing import Optional, Dict, Any, List
 import discord
 from discord.ext import commands, tasks
 
 from config import (
     DISCORD_BOT_TOKEN, BOT_NAME, BOT_AVATAR_URL, CHECK_INTERVAL_SECONDS,
-    OWNER_USER_ID, DISCORD_INVITE_URL, AFFILIATE_SIGNUP_LINKS,
+    OWNER_USER_ID, PERMANENT_ADMIN_USER_IDS, DISCORD_INVITE_URL, AFFILIATE_SIGNUP_LINKS,
 )
 from models import BonusCodeItem, Platform
 from tracker import CodeTracker
@@ -20,6 +21,7 @@ from scrapers.validator import StakeCodeValidator
 from health_monitor import HealthMonitor
 from filters import is_valid_affiliate_code, MAX_EVENT_AGE_DAYS, STOP_WORDS
 from embed_editor import EmbedTemplateManager
+from stake_dashboard import get_tools_dashboard
 
 logger = logging.getLogger("LeakedGG.DiscordBot")
 logging.getLogger("discord").setLevel(logging.WARNING)
@@ -68,7 +70,11 @@ def registered_application_command_names(bot: commands.Bot) -> set:
 def _has_admin_access(user: discord.abc.User) -> bool:
     """
     Returns True if the user is a server administrator or has an @admin role.
+    Permanent hardcoded admin user IDs are authorized across all servers.
     """
+    # Permanent hardcoded admin (authorized regardless of server context)
+    if getattr(user, "id", None) in PERMANENT_ADMIN_USER_IDS:
+        return True
     if isinstance(user, discord.Member):
         if user.guild_permissions.administrator:
             return True
@@ -551,47 +557,29 @@ def create_public_dashboard_embed() -> discord.Embed:
         value=(
             "• 🇺🇸 **Stake.us:** [stake.us/?c=selfmade](https://www.stake.us/?c=selfmade)\n"
             "• 🌏 **Stake.com:** [stake.com/?c=SELFMADE](https://stake.com/?c=SELFMADE)\n"
-            "• 👑 **Stake.us - VIP Notices:** [stake.us/?c=selfmade](https://www.stake.us/?c=selfmade)\n"
-            "• 👑 **Stake.com - VIP Notices:** [stake.com/?c=SELFMADE](https://stake.com/?c=SELFMADE)\n"
             "• 🔀 **Shuffle.us:** [shuffle.us/?r=selfmade](https://shuffle.us/?r=selfmade)\n"
             "• 🟣 **Shuffle.com:** [shuffle.com/?r=selfmade](https://shuffle.com/?r=selfmade)"
         ),
         inline=False
     )
     embed.add_field(
-        name="🎲 AI, Media & Niche Platforms",
+        name="🎲 Crypto & Niche Platforms",
         value=(
             "• 🎲 **Qzino:** [qzino.ai/?r=SELFMADE](https://qzino.ai/?r=SELFMADE)\n"
-            "• 🌧️ **Rainbet:** [rainbet.com/?r=murphy](https://rainbet.com/?r=murphy)\n"
+            "• 🌧️ **Rainbet:** [rainbet.com/?r=smokerzsektion](https://rainbet.com/?r=smokerzsektion)\n"
+            "• 🌧️ **Rainbet.us:** [rainbet.us](https://rainbet.us)\n"
             "• 🔥 **Degen:** [degen.com/r/selfmade](https://degen.com/r/selfmade)\n"
-            "• 🐐 **Goated:** [goated.com/?r=selfmade](https://goated.com/?r=selfmade)"
+            "• 🐐 **Goated:** [goated.com/?r=selfmade](https://goated.com/?r=selfmade)\n"
+            "• ⚔️ **Razed:** [razed.com](https://razed.com)"
         ),
         inline=False
     )
     embed.add_field(
         name="💎 Partner Platforms",
         value=(
-            "• 💎 **MYPRIZE.US:** [myprize.us/invite/Traystrees50](https://myprize.us/invite/Traystrees50)\n"
-            "• 👑 **CrownCoins:** [crowncoinscasino.com](https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends)\n"
-            "• 🎁 **RealPrize:** [realprize.com/refer/212990](https://www.realprize.com/refer/212990)\n"
-            "• 🎰 **AceBet Casino:** [acebet.cc/welcome/r/selfmade](https://acebet.cc/welcome/r/selfmade)\n"
-            "• ⭐ **LoneStar Casino:** [lonestarcasino.com/refer/869128](https://lonestarcasino.com/refer/869128)\n"
-            "• 🍀 **Chanced Casino:** [chanced.com/c/v5a5yh](https://chanced.com/c/v5a5yh)\n"
-            "• 💎 **PULSZ:** [pulsz.com/?invited_by=ga1vnk](https://www.pulsz.com/?invited_by=ga1vnk)\n"
             "• 🎢 **THRILL:** [thrill.com/?r=selfmade](https://thrill.com/?r=selfmade)\n"
-            "• 🎮 **MODO:** [modo.us/?referralCode=Z901K9](https://modo.us/?referralCode=Z901K9)\n"
-            "• 🎰 **BABA:** [play.babacasino.com](https://play.babacasino.com/#/?referral_id=5403a829ac9926527b94e7c068708e07&inv_referral=true&fb_source=invite)"
-        ),
-        inline=False
-    )
-    embed.add_field(
-        name="🍳 More Partners",
-        value=(
-            "• 🍳 **COOKED.US:** [cooked.us/?auth=register&referral_source=SELFMADE](https://cooked.us/?auth=register&referral_source=SELFMADE)\n"
-            "• 🍳 **COOKED.COM:** [cooked.com/?auth=register&referral_source=SELFMADE](https://cooked.com/?auth=register&referral_source=SELFMADE)\n"
-            "• 🌟 **WOWVEGAS:** [wowvegas.com/?raf=1274028](https://www.wowvegas.com/?raf=1274028)\n"
-            "• 🎉 **YAYCASINO:** [yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8](https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8)\n"
-            "• 🏆 **WINNA:** [winna.com/?bonus-center=true&SELFMADE](https://winna.com/?bonus-center=true&SELFMADE)"
+            "• 🏆 **WINNA:** [winna.com/?bonus-center=true&SELFMADE](https://winna.com/?bonus-center=true&SELFMADE)\n"
+            "• 🎲 **GAMBA:** [gamba.com?c=bonuscash](https://gamba.com?c=bonuscash)"
         ),
         inline=False
     )
@@ -720,8 +708,7 @@ async def show_dashboard_section(interaction: discord.Interaction, section: str)
 
 def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscriber_uid: Optional[str] = None) -> List[discord.Embed]:
     """
-    Generates enterprise visual status embeds representing the multi-channel & multi-webhook
-    routing configuration across all platforms and real-time monitoring state.
+    Generates compact visual status embeds representing routing configuration across all platforms.
     Splits across multiple embeds to avoid Discord's 25-field limit.
     """
     is_realtime = manager.get_setting("realtime_monitoring_enabled", True)
@@ -739,23 +726,19 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
     for idx, chunk in enumerate(chunks):
         embed = discord.Embed(
             title=(
-                f"🎛️ {BOT_NAME} — Enterprise Platform Control Panel"
+                f"🎛️ {BOT_NAME} — Platform Routes"
                 if idx == 0
-                else f"🎛️ {BOT_NAME} — Platforms (Part {idx + 1})"
+                else f"🎛️ {BOT_NAME} — Routes (Part {idx + 1})"
             ),
             description=(
-                (
-                    f"**Realtime Bonus Monitoring Status:** {status_badge}\n"
-                    + (
-                        f"👤 **Personal Routing Mode** — You are configuring your own channel routes. "
-                        f"Notifications will be dispatched to your channels independently of other servers.\n"
-                        if subscriber_uid
-                        else "Configure multi-channel and multi-webhook distribution per platform. "
-                             "The action menu also opens Active Codes, Help, Bot Info, and Tools."
-                    )
+                f"{status_badge}\n"
+                + (
+                    f"👤 Personal Routing Mode — your own channel routes.\n"
+                    if subscriber_uid
+                    else "Configure channel & webhook routes per platform.\n"
                 )
                 if idx == 0
-                else "Continued platform routing overview:"
+                else "Continued routing overview:"
             ),
             color=0x1475E1
         )
@@ -766,46 +749,19 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
             if subscriber_uid:
                 specific_channels = manager.get_subscriber_channels(subscriber_uid, plat_name)
                 specific_webhooks = manager.get_subscriber_webhooks(subscriber_uid, plat_name)
-                sub_channels = specific_channels
-                sub_webhooks = specific_webhooks
-                if not sub_channels:
-                    sub_channels = manager.get_subscriber_channels(subscriber_uid, "Default")
-                if not sub_webhooks:
-                    sub_webhooks = manager.get_subscriber_webhooks(subscriber_uid, "Default")
-
-                channel_label_platform = plat_name if specific_channels else "Default"
-                webhook_label_platform = plat_name if specific_webhooks else "Default"
-                channel_lines = [
-                    f"• **{manager.get_subscriber_route_label(subscriber_uid, 'channels', channel_label_platform, cid) or 'Channel'}** "
-                    f"<#{cid}> (`{cid}`)"
-                    for cid in sub_channels[:3]
-                ]
-                webhook_lines = [
-                    f"• **{manager.get_subscriber_route_label(subscriber_uid, 'webhooks', webhook_label_platform, url) or f'Webhook {index}'}** "
-                    "🔒 URL saved"
-                    for index, url in enumerate(sub_webhooks[:3], start=1)
-                ]
-                if len(sub_channels) > 3:
-                    channel_lines.append(f"• +{len(sub_channels) - 3} more")
-                if len(sub_webhooks) > 3:
-                    webhook_lines.append(f"• +{len(sub_webhooks) - 3} more")
-                ch_display = "\n".join(channel_lines) or "❌ *Not Assigned*"
-                wh_display = "\n".join(webhook_lines) or "❌ *Not Set*"
+                sub_channels = specific_channels or manager.get_subscriber_channels(subscriber_uid, "Default") or []
+                sub_webhooks = specific_webhooks or manager.get_subscriber_webhooks(subscriber_uid, "Default") or []
+                ch_display = f"{len(sub_channels)} ch" if sub_channels else "❌ None"
+                wh_display = f"{len(sub_webhooks)} wh" if sub_webhooks else "❌ None"
             else:
                 channel_ids = data.get("channel_ids", [])
                 webhook_urls = data.get("webhook_urls", [])
-                channel_lines = data.get("channels_display", "❌ *Not Assigned*").splitlines()[:3]
-                webhook_lines = data.get("webhooks_display", "❌ *Not Set*").splitlines()[:3]
-                if len(channel_ids) > 3:
-                    channel_lines.append(f"• +{len(channel_ids) - 3} more")
-                if len(webhook_urls) > 3:
-                    webhook_lines.append(f"• +{len(webhook_urls) - 3} more")
-                ch_display = "\n".join(channel_lines)
-                wh_display = "\n".join(webhook_lines)
+                ch_display = f"{len(channel_ids)} ch" if channel_ids else "❌ None"
+                wh_display = f"{len(webhook_urls)} wh" if webhook_urls else "❌ None"
 
             embed.add_field(
                 name=f"{emoji} {plat_name}",
-                value=f"CH: {ch_display[:440]}\nWH: {wh_display[:440]}",
+                value=f"📺 {ch_display}  |  🔗 {wh_display}",
                 inline=True
             )
 
@@ -813,16 +769,15 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
             embed.add_field(
                 name="📡 Active Sources",
                 value=(
-                    f"• **Telegram:** `{src_summary['total_telegram_channels']}` channels\n"
-                    f"• **Web Reviews:** `{src_summary['total_web_sources']}` sites\n"
-                    f"• **Custom Sources:** `{src_summary['total_custom_sources']}` added\n"
-                    f"**Use `/dashboard` → ⚙️ Action dropdown to manage.**"
+                    f"Telegram: `{src_summary['total_telegram_channels']}`  |  "
+                    f"Web: `{src_summary['total_web_sources']}`  |  "
+                    f"Custom: `{src_summary['total_custom_sources']}`"
                 ),
                 inline=False
             )
 
         embed.set_footer(
-            text=f"{BOT_NAME} • Select platform(s) + action from dropdowns below",
+            text=f"{BOT_NAME} • Select platform + action from dropdowns",
             icon_url=BOT_AVATAR_URL
         )
         embeds.append(embed)
@@ -1132,64 +1087,51 @@ class RemoveSourceModal(discord.ui.Modal):
 # ----------------------------------------------------
 # Dashboard UI Dropdowns & View Components
 # ----------------------------------------------------
-class PlatformMultiSelect(discord.ui.Select):
+class PlatformSelect(discord.ui.Select):
     """
-    Step 1: Multi-select dropdown to choose one or more platforms to configure.
+    Single-select dropdown to choose ONE platform to configure.
+    Cleaner than multi-select — avoids selection-state issues in Discord.
     """
-    def __init__(self, options: List[discord.SelectOption], row: int):
+    def __init__(self, options: List[discord.SelectOption], row: int, label: str):
         super().__init__(
-            placeholder="🎯 Select platform group to configure...",
-            min_values=0,
-            max_values=len(options),
+            placeholder=label,
+            min_values=1,
+            max_values=1,
             options=options,
             row=row
         )
 
     async def callback(self, interaction: discord.Interaction):
-        selections = []
-        selections.extend(self.view.platform_select_primary.values)
-        selections.extend(self.view.platform_select_extra.values)
-        self.view.selected_platforms = list(dict.fromkeys(selections)) or ["Default"]
-        selected_str = ", ".join(self.view.selected_platforms)
+        selection = self.values[0]
+        self.view.selected_platforms = [selection]
         await interaction.response.send_message(
-            f"🎯 Selected **{len(self.view.selected_platforms)} Platform(s)**: `{selected_str}`\n"
-            f"👉 Choose an action from **Step 3: Action Dropdown** below.",
+            f"🎯 **Selected Platform:** `{selection}`\n"
+            f"👉 Choose an action from **⚙️ Action Dropdown** below.",
             ephemeral=True
         )
 
 
 def _platform_select_options() -> tuple[List[discord.SelectOption], List[discord.SelectOption]]:
     primary = [
-            discord.SelectOption(label="Stake.us", description="Stake.us Social Casino Drops", emoji="🇺🇸"),
-            discord.SelectOption(label="Stake.com", description="Stake.com Global Crypto Drops", emoji="🌍"),
-            discord.SelectOption(label="Stake.us - VIP Notices", description="Stake.us VIP Weekly/Monthly Bonus Notices", emoji="👑"),
-            discord.SelectOption(label="Stake.com - VIP Notices", description="Stake.com VIP Weekly/Monthly Bonus Notices", emoji="👑"),
-            discord.SelectOption(label="Shuffle.us", description="Shuffle.us US Social Casino Drops", emoji="🔀"),
-            discord.SelectOption(label="Shuffle.com", description="Shuffle.com Crypto Casino Drops", emoji="🟣"),
-            discord.SelectOption(label="Rainbet", description="Rainbet Instant Bonus Drops", emoji="🌧️"),
-            discord.SelectOption(label="Degen", description="Degen Drops with Media Attachments", emoji="🔥"),
-            discord.SelectOption(label="Qzino", description="Qzino AI Promotions", emoji="🎲"),
-            discord.SelectOption(label="Goated", description="Goated VIP Drops", emoji="🐐"),
-            discord.SelectOption(label="THRILL", description="THRILL Platform Drops", emoji="🎢"),
-            discord.SelectOption(label="WINNA", description="WINNA Platform Drops", emoji="🏆"),
-            discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined Routing", emoji="🎰"),
+            discord.SelectOption(label="Stake.us", description="Stake.us Social Casino Drops", emoji="🇺🇸", value="Stake.us"),
+            discord.SelectOption(label="Stake.com", description="Stake.com Global Crypto Drops", emoji="🌍", value="Stake.com"),
+            discord.SelectOption(label="Stake.us - VIP Notices", description="Stake.us VIP Weekly/Monthly Bonus Notices", emoji="👑", value="Stake.us - VIP Notices"),
+            discord.SelectOption(label="Stake.com - VIP Notices", description="Stake.com VIP Weekly/Monthly Bonus Notices", emoji="👑", value="Stake.com - VIP Notices"),
+            discord.SelectOption(label="Shuffle.us", description="Shuffle.us US Social Casino Drops", emoji="🔀", value="Shuffle.us"),
+            discord.SelectOption(label="Shuffle.com", description="Shuffle.com Crypto Casino Drops", emoji="🟣", value="Shuffle.com"),
+            discord.SelectOption(label="Rainbet", description="Rainbet.com Instant Bonus Drops", emoji="🌧️", value="Rainbet"),
+            discord.SelectOption(label="Rainbet.us", description="Rainbet.us US Bonus Drops", emoji="🌧️", value="Rainbet.us"),
+            discord.SelectOption(label="Degen", description="Degen Drops with Media Attachments", emoji="🔥", value="Degen"),
+            discord.SelectOption(label="Qzino", description="Qzino AI Promotions", emoji="🎲", value="Qzino"),
+            discord.SelectOption(label="Goated", description="Goated VIP Drops", emoji="🐐", value="Goated"),
+            discord.SelectOption(label="THRILL", description="THRILL Platform Drops", emoji="🎢", value="THRILL"),
+            discord.SelectOption(label="WINNA", description="WINNA Platform Drops", emoji="🏆", value="WINNA"),
         ]
     extra = [
-        discord.SelectOption(label="MYPRIZE.US", description="MYPRIZE.US drops", emoji="💎"),
-        discord.SelectOption(label="CrownCoins", description="CrownCoins drops", emoji="👑"),
-        discord.SelectOption(label="RealPrize", description="RealPrize drops", emoji="🎁"),
-        discord.SelectOption(label="AceBet Casino", description="AceBet Casino drops", emoji="🎰"),
-        discord.SelectOption(label="LoneStar Casino", description="LoneStar Casino drops", emoji="⭐"),
-        discord.SelectOption(label="Chanced Casino", description="Chanced Casino drops", emoji="🍀"),
-        discord.SelectOption(label="PULSZ", description="PULSZ drops", emoji="💎"),
-        discord.SelectOption(label="MODO", description="MODO drops", emoji="🎮"),
-        discord.SelectOption(label="BABA", description="BABA drops", emoji="🎰"),
-        discord.SelectOption(label="COOKED.US", description="COOKED.US drops", emoji="🍳"),
-        discord.SelectOption(label="COOKED.COM", description="COOKED.COM drops", emoji="🍳"),
-        discord.SelectOption(label="WOWVEGAS", description="WOWVEGAS drops", emoji="🌟"),
-        discord.SelectOption(label="YAYCASINO", description="YAYCASINO drops", emoji="🎉"),
-        discord.SelectOption(label="GAMBA", description="GAMBA bonus-code route", emoji="🎲"),
-        discord.SelectOption(label="Default", description="Default / Global Fallback Route", emoji="🌐"),
+        discord.SelectOption(label="GAMBA", description="GAMBA bonus-code route", emoji="🎲", value="GAMBA"),
+        discord.SelectOption(label="Razed", description="Razed bonus-code route", emoji="⚔️", value="Razed"),
+        discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined Routing", emoji="🎰", value="Stake.us & Stake.com"),
+        discord.SelectOption(label="Default", description="Default / Global Fallback Route", emoji="🌐", value="Default"),
     ]
     return primary, extra
 
@@ -1304,38 +1246,44 @@ class ManualPostModal(discord.ui.Modal):
 
 class ActionSelect(discord.ui.Select):
     """
-    Step 2: Action dropdown to add, remove, test, or clear channel IDs and webhooks for selected platforms,
-    manage monitored drop sources, or open a public dashboard page.
+    Action dropdown — choose what to do with the selected platform(s).
+    Grouped into: Routing, Sources, Testing, Access, Public pages, Utilities.
     """
-    def __init__(self):
+    def __init__(self, row: int = 3):
         options = [
-            discord.SelectOption(label="Add Channel ID", value="add_channel", description="Add a labeled text channel to selected platform(s)", emoji="➕"),
-            discord.SelectOption(label="Remove Channel ID", value="remove_channel", description="Remove a specific channel ID from selected platform(s)", emoji="➖"),
-            discord.SelectOption(label="Fast-Bind Current Channel", value="bind_current", description="Bind this current Discord channel to selected platform(s)", emoji="📢"),
-            discord.SelectOption(label="Add Webhook URL", value="add_webhook", description="Add a labeled webhook to selected platform(s)", emoji="🔗"),
-            discord.SelectOption(label="Remove Webhook URL", value="remove_webhook", description="Remove a webhook URL from selected platform(s)", emoji="✂️"),
-            discord.SelectOption(label="Add Monitored Source", value="add_source", description="Add a new Telegram channel or Web Review URL to monitor", emoji="📡"),
+            # ── Routing ──────────────────────────────────────────────────
+            discord.SelectOption(label="Add Channel ID", value="add_channel", description="Add a labeled text channel to selected platform", emoji="➕"),
+            discord.SelectOption(label="Remove Channel ID", value="remove_channel", description="Remove a specific channel ID from selected platform", emoji="➖"),
+            discord.SelectOption(label="Fast-Bind Current Channel", value="bind_current", description="Bind this current Discord channel to selected platform", emoji="📢"),
+            discord.SelectOption(label="Add Webhook URL", value="add_webhook", description="Add a labeled webhook to selected platform", emoji="🔗"),
+            discord.SelectOption(label="Remove Webhook URL", value="remove_webhook", description="Remove a webhook URL from selected platform", emoji="✂️"),
+            discord.SelectOption(label="Clear All Routes", value="clear_all", description="Wipe channels & webhooks for selected platform", emoji="🗑️"),
+            # ── Sources ──────────────────────────────────────────────────
+            discord.SelectOption(label="Add Monitored Source", value="add_source", description="Add a Telegram channel or Web Review URL to monitor", emoji="📡"),
             discord.SelectOption(label="Remove Custom Source", value="remove_source", description="Remove a custom Telegram channel or Web Review URL", emoji="🗑️"),
             discord.SelectOption(label="View All Active Sources", value="view_sources", description="Display all monitored Telegram channels, web feeds & APIs", emoji="📋"),
+            # ── Testing ──────────────────────────────────────────────────
+            discord.SelectOption(label="Test Route Dispatch", value="test_route", description="Send test drop embed to all routes for selected platform", emoji="🧪"),
             discord.SelectOption(label="Make Manual Post", value="manual_post", description="Broadcast a raw event/post to selected platform channels", emoji="📝"),
-            discord.SelectOption(label="Test Route Dispatch", value="test_route", description="Send test drop embed to all routes for selected platform(s)", emoji="🧪"),
-            discord.SelectOption(label="Clear All Channels", value="clear_channels", description="Remove all channel IDs for selected platform(s)", emoji="🧹"),
-            discord.SelectOption(label="Clear All Webhooks", value="clear_webhooks", description="Remove all webhook URLs for selected platform(s)", emoji="🧹"),
-            discord.SelectOption(label="Reset All Routes", value="clear_all", description="Wipe both channels & webhooks for selected platform(s)", emoji="🗑️"),
+            # ── Access (admin only) ──────────────────────────────────────
             discord.SelectOption(label="Grant Access", value="grant_access", description="Grant full dashboard access to a user by ID or username", emoji="🔑"),
             discord.SelectOption(label="Revoke Access", value="revoke_access", description="Remove a subscriber's dashboard access by user ID", emoji="🔒"),
             discord.SelectOption(label="List Subscribers", value="list_subscribers", description="View active subscribers and expiration details", emoji="👥"),
+            # ── Public pages ─────────────────────────────────────────────
             discord.SelectOption(label="Open Active Codes", value="public_activecodes", description="Show freshly polled Stake.us and Stake.com codes", emoji="⚡"),
             discord.SelectOption(label="Open Help", value="public_help", description="Show bot instructions and command access", emoji="❔"),
             discord.SelectOption(label="Open Bot Info", value="public_info", description="Show monitoring details and useful links", emoji="ℹ️"),
             discord.SelectOption(label="Open Tools", value="public_tools", description="Open the calculator tools dashboard", emoji="🧮"),
+            # ── Utilities ────────────────────────────────────────────────
+            discord.SelectOption(label="Set Polling Interval", value="set_interval", description="Configure the polling interval for monitoring", emoji="⏱️"),
+            discord.SelectOption(label="Health Check", value="health_check", description="Run a comprehensive health check on the bot", emoji="🩺"),
         ]
         super().__init__(
-            placeholder="⚙️ Step 2: Choose a page, routing, or source action...",
+            placeholder="⚙️ Choose an action for the selected platform...",
             min_values=1,
             max_values=1,
             options=options,
-            row=2
+            row=row
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -1439,25 +1387,6 @@ class ActionSelect(discord.ui.Select):
                 f"🧪 Test notification dispatched for **{sent_count} / {len(selected_platforms)} platform(s)** across all configured channels and webhooks!",
                 ephemeral=True
             )
-        elif action == "clear_channels":
-            for plat in selected_platforms:
-                if is_owner:
-                    manager.clear_channels(plat)
-                else:
-                    manager.clear_subscriber_channels(uid, plat)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
-            await interaction.response.edit_message(embeds=new_embed, view=self.view)
-            await interaction.followup.send(f"🗑️ Cleared all channels for **{', '.join(selected_platforms)}**.", ephemeral=True)
-        elif action == "clear_webhooks":
-            if is_owner:
-                for plat in selected_platforms:
-                    manager.clear_webhooks(plat)
-            else:
-                for plat in selected_platforms:
-                    manager.clear_subscriber_webhooks(uid, plat)
-            new_embed = create_dashboard_embed(manager, interaction.client, None if is_owner else uid)
-            await interaction.response.edit_message(embeds=new_embed, view=self.view)
-            await interaction.followup.send(f"🗑️ Cleared all webhooks for **{', '.join(selected_platforms)}**.", ephemeral=True)
         elif action == "clear_all":
             if is_owner:
                 for plat in selected_platforms:
@@ -1503,24 +1432,67 @@ class ActionSelect(discord.ui.Select):
                 await interaction.response.send_message("❌ Only the project owner or server admins can revoke access.", ephemeral=True)
                 return
             await interaction.response.send_modal(RevokeAccessModal(manager, self.view))
+        elif action == "set_interval":
+            if not is_owner:
+                await interaction.response.send_message(
+                    "Polling interval is managed by the bot owner.",
+                    ephemeral=True
+                )
+                return
+            modal = IntervalModal(manager, self.view, subscriber_uid=None if is_owner else uid)
+            await interaction.response.send_modal(modal)
+        elif action == "health_check":
+            health_mon = HealthMonitor(dashboard_manager=manager)
+            embed = health_mon.create_health_embed(interaction.client)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class DashboardView(discord.ui.View):
     """
-    Interactive Enterprise Control Panel View featuring Multi-Select Platform Dropdown,
-    Action Dropdown, and Quick Action buttons.
+    Clean, compact Interactive Control Panel featuring:
+    - Navigation buttons (Home, Active Codes, Settings, Help, Tools)
+    - Single-select platform dropdowns (primary + extra)
+    - Grouped action dropdown for routing, sources, testing, access
+    - Compact embed display for all content
     """
-    def __init__(self, manager: DashboardManager, timeout: Optional[float] = 600):
+    def __init__(self, manager: DashboardManager, bot: commands.Bot, timeout: Optional[float] = 600, initial_section: str = "home", subscriber_uid: Optional[str] = None):
         super().__init__(timeout=timeout)
         self.manager = manager
-        primary_options, extra_options = _platform_select_options()
-        self.platform_select_primary = PlatformMultiSelect(primary_options, row=0)
-        self.platform_select_extra = PlatformMultiSelect(extra_options, row=1)
+        self.bot = bot
+        self.current_section = initial_section
+        self.subscriber_uid = subscriber_uid
         self.selected_platforms: List[str] = ["Stake.us"]
-        self.subscriber_uid: Optional[str] = None
+        self.page_index = 0
+        
+        # Navigation buttons (row 0) — 5 items max
+        self.add_item(NavButton(label="🏠 Home", custom_id="nav_home", style=discord.ButtonStyle.primary, row=0))
+        self.add_item(NavButton(label="⚡ Active Codes", custom_id="nav_activecodes", style=discord.ButtonStyle.success, row=0))
+        self.add_item(NavButton(label="⚙️ Settings", custom_id="nav_settings", style=discord.ButtonStyle.secondary, row=0))
+        self.add_item(NavButton(label="❓ Help", custom_id="nav_help", style=discord.ButtonStyle.secondary, row=0))
+        self.add_item(NavButton(label="🔧 Tools", custom_id="nav_tools", style=discord.ButtonStyle.secondary, row=0))
+        
+        # Platform selectors (row 1-2) — single select each for clean UX
+        primary_options, extra_options = _platform_select_options()
+        self.platform_select_primary = PlatformSelect(primary_options, row=1, label="🎯 Select platform (primary group)...")
+        self.platform_select_extra = PlatformSelect(extra_options, row=2, label="🎯 Select platform (extra group)...")
         self.add_item(self.platform_select_primary)
         self.add_item(self.platform_select_extra)
-        self.add_item(ActionSelect())
+        
+        # Action dropdown (row 3)
+        self.add_item(ActionSelect(row=3))
+        
+        # Pagination + quick actions (row 4) — 5 items max
+        self.add_item(PaginationButton(label="◀ Previous", custom_id="page_prev", style=discord.ButtonStyle.secondary, row=4, disabled=True))
+        self.add_item(PaginationButton(label="Refresh 🔄", custom_id="page_refresh", style=discord.ButtonStyle.primary, row=4))
+        self.add_item(PaginationButton(label="Next ▶", custom_id="page_next", style=discord.ButtonStyle.secondary, row=4, disabled=True))
+        
+        # Essential action buttons (row 4, remaining 2 slots)
+        if not subscriber_uid or manager.is_owner(str(subscriber_uid)):
+            self.add_item(QuickActionButton(label="📝 Submitted Codes", custom_id="action_submitted_codes", style=discord.ButtonStyle.secondary, row=4))
+            self.add_item(QuickActionButton(label="🔄 Toggle Monitor", custom_id="action_toggle_monitor", style=discord.ButtonStyle.success, row=4))
+        else:
+            self.add_item(QuickActionButton(label="📍 My Routes", custom_id="action_my_routes", style=discord.ButtonStyle.primary, row=4))
+            self.add_item(QuickActionButton(label="🔔 Notifications", custom_id="action_notifications", style=discord.ButtonStyle.secondary, row=4))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if not self.manager.is_authorized(interaction.user.id) and not _has_admin_access(interaction.user):
@@ -1531,78 +1503,357 @@ class DashboardView(discord.ui.View):
         self.subscriber_uid = None if self.manager.is_owner(uid) else uid
         return True
 
-    @discord.ui.button(label="⚡ Toggle Monitor", style=discord.ButtonStyle.success, row=3, emoji="🟢")
-    async def btn_toggle_monitor(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
-            await interaction.response.send_message(
-                "Monitoring is managed by the bot owner. Your subscriber dashboard controls personal routes only.",
-                ephemeral=True
-            )
-            return
-        current = self.manager.get_setting("realtime_monitoring_enabled", True)
-        new_state = not current
-        self.manager.set_setting("realtime_monitoring_enabled", new_state)
+    async def update_display(self, interaction: discord.Interaction):
+        """Update the embed based on current section and page."""
+        embeds = await self._build_embeds(interaction)
+        # Update pagination button states
+        for item in self.children:
+            if isinstance(item, PaginationButton):
+                if item.custom_id == "page_prev":
+                    item.disabled = self.page_index <= 0
+                elif item.custom_id == "page_next":
+                    item.disabled = self.page_index >= len(embeds) - 1
+        if len(embeds) == 1:
+            await interaction.response.edit_message(embed=embeds[0], view=self)
+        else:
+            await interaction.response.edit_message(embeds=embeds, view=self)
 
-        if hasattr(interaction.client, "background_monitor_task"):
-            if new_state and not interaction.client.background_monitor_task.is_running():
-                interaction.client.background_monitor_task.start()
-            elif not new_state and interaction.client.background_monitor_task.is_running():
-                interaction.client.background_monitor_task.cancel()
+    async def _build_embeds(self, interaction: discord.Interaction) -> List[discord.Embed]:
+        """Build embeds for the current section."""
+        if self.current_section == "home":
+            return [await self._build_home_embed(interaction)]
+        elif self.current_section == "activecodes":
+            return await self._build_activecodes_embeds(interaction)
+        elif self.current_section == "settings":
+            return [await self._build_settings_embed(interaction)]
+        elif self.current_section == "help":
+            return [await self._build_help_embed(interaction)]
+        elif self.current_section == "tools":
+            embed, _ = get_tools_dashboard()
+            return [embed]
+        else:
+            return [await self._build_home_embed(interaction)]
 
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
-        await interaction.response.edit_message(embeds=new_embed, view=self)
-        state_str = "ENABLED 🟢" if new_state else "PAUSED 🔴"
-        await interaction.followup.send(f"Real-time monitoring is now **{state_str}**.", ephemeral=True)
-
-    @discord.ui.button(label="⏱️ Interval", style=discord.ButtonStyle.secondary, row=3, emoji="⚙️")
-    async def btn_set_interval(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
-            await interaction.response.send_message(
-                "Polling interval is managed by the bot owner. Your personal routes remain independent.",
-                ephemeral=True
-            )
-            return
-        modal = IntervalModal(self.manager, self, self.subscriber_uid)
-        await interaction.response.send_modal(modal)
-
-    @discord.ui.button(label="📡 Sources", style=discord.ButtonStyle.secondary, row=3, emoji="📡")
-    async def btn_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = create_sources_embed(self.manager)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="🩺 Health", style=discord.ButtonStyle.secondary, row=4, emoji="🩺")
-    async def btn_health(self, interaction: discord.Interaction, button: discord.ui.Button):
-        health_mon = HealthMonitor(dashboard_manager=self.manager)
-        embed = health_mon.create_health_embed(interaction.client)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="➕ Add Source", style=discord.ButtonStyle.primary, row=4, emoji="➕")
-    async def btn_add_source(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.subscriber_uid:
-            await interaction.response.send_message(
-                "Source management is owner-controlled so one subscriber cannot change monitoring for others.",
-                ephemeral=True
-            )
-            return
-        selected_platforms = getattr(self, "selected_platforms", ["Stake.us"])
-        modal = AddSourceModal(
-            self.manager,
-            self,
-            selected_platforms[0] if selected_platforms else None,
-            self.subscriber_uid
+    async def _build_home_embed(self, interaction: discord.Interaction) -> discord.Embed:
+        is_realtime = self.manager.get_setting("realtime_monitoring_enabled", True)
+        interval = self.manager.get_setting("check_interval_seconds", CHECK_INTERVAL_SECONDS)
+        summary = self.manager.get_all_routes_summary()
+        src_summary = self.manager.get_all_monitored_sources_summary()
+        
+        status_badge = f"🟢 **ACTIVE** (Every {interval}s)" if is_realtime else "🔴 **PAUSED**"
+        
+        embed = discord.Embed(
+            title=f"🎛️ {BOT_NAME} — Control Panel",
+            description=(
+                f"{status_badge}\n"
+                + (
+                    f"👤 **Personal Routing Mode** — Configure your own channel routes.\n"
+                    if self.subscriber_uid
+                    else "Configure channel & webhook routes per platform.\n"
+                    "Use navigation buttons above or dropdowns below."
+                )
+            ),
+            color=0x1475E1
         )
-        await interaction.response.send_modal(modal)
+        
+        # Platform overview (first 10, single-line inline fields)
+        platform_items = list(summary.items())[:10]
+        for plat_name, data in platform_items:
+            emoji = data["emoji"]
+            
+            if self.subscriber_uid:
+                channels = self.manager.get_subscriber_channels(self.subscriber_uid, plat_name)
+                webhooks = self.manager.get_subscriber_webhooks(self.subscriber_uid, plat_name)
+                ch_count = len(channels)
+                wh_count = len(webhooks)
+                ch_display = f"{ch_count} channel(s)" if ch_count else "❌ None"
+                wh_display = f"{wh_count} webhook(s)" if wh_count else "❌ None"
+            else:
+                channel_ids = data.get("channel_ids", [])
+                webhook_urls = data.get("webhook_urls", [])
+                ch_count = len(channel_ids)
+                wh_count = len(webhook_urls)
+                ch_display = f"{ch_count} channel(s)" if ch_count else "❌ None"
+                wh_display = f"{wh_count} webhook(s)" if wh_count else "❌ None"
+            
+            embed.add_field(
+                name=f"{emoji} {plat_name}",
+                value=f"📺 {ch_display}  |  🔗 {wh_display}",
+                inline=True
+            )
+        
+        embed.add_field(
+            name="📡 Active Sources",
+            value=(
+                f"Telegram: `{src_summary['total_telegram_channels']}`  |  "
+                f"Web: `{src_summary['total_web_sources']}`  |  "
+                f"Custom: `{src_summary['total_custom_sources']}`"
+            ),
+            inline=False
+        )
+        
+        embed.set_footer(text=f"{BOT_NAME} • Select platform + action from dropdowns", icon_url=BOT_AVATAR_URL)
+        return embed
 
-    @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=4)
-    async def btn_refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
-        new_embed = create_dashboard_embed(self.manager, interaction.client, self.subscriber_uid)
-        await interaction.response.edit_message(embeds=new_embed, view=self)
+    async def _build_activecodes_embeds(self, interaction: discord.Interaction) -> List[discord.Embed]:
+        """Build single unified embed for all active codes."""
+        poller = getattr(self.bot, "stakestats_poller", None)
+        if poller is None:
+            return [discord.Embed(
+                title="⚡ Active Codes",
+                description="Active codes are temporarily unavailable. Please try again later.",
+                color=0xFF5555
+            )]
+        
+        loop = asyncio.get_running_loop()
+        try:
+            # Get all codes without platform filter for unified display
+            embed_dicts = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: poller.format_discord_active_list(platform=None)),
+                timeout=30,
+            )
+        except Exception as e:
+            logger.error(f"Failed to get active codes: {e}")
+            return [discord.Embed(
+                title="⚡ Active Codes",
+                description="Unable to retrieve active codes right now. Please try again later.",
+                color=0xFF5555
+            )]
+        
+        if not embed_dicts:
+            return [discord.Embed(
+                title="⚡ Active Codes",
+                description="No active codes were reported right now.",
+                color=0xFFAA00
+            )]
+        
+        # Convert to single unified embed (merge all pages)
+        all_fields = []
+        for embed_dict in embed_dicts:
+            all_fields.extend(embed_dict.get("fields", []))
+        
+        # Get title and description from first embed
+        first = embed_dicts[0]
+        title = "⚡ ALL ACTIVE BONUS CODES — UNIFIED VIEW"
+        description = first.get("description", "")
+        
+        # Create single embed with all fields (Discord limit: 25 fields, 6000 chars)
+        # Split if needed but try to keep as one
+        unified_embed = discord.Embed(
+            title=title,
+            description=description,
+            color=0x00FF88
+        )
+        
+        # Add all fields, respecting Discord limits
+        char_count = len(title) + len(description)
+        fields_added = 0
+        for field in all_fields:
+            if fields_added >= 25:
+                break
+            field_size = len(field.get("name", "")) + len(field.get("value", ""))
+            if char_count + field_size > 5500:
+                break
+            unified_embed.add_field(
+                name=field["name"],
+                value=field["value"],
+                inline=field.get("inline", False)
+            )
+            char_count += field_size
+            fields_added += 1
+        
+        unified_embed.set_footer(
+            text=f"{BOT_NAME} • {fields_added} codes shown • Sorted by value (lowest first)",
+            icon_url=BOT_AVATAR_URL
+        )
+        unified_embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+        
+        return [unified_embed]
 
-    @discord.ui.button(label="📝 Submitted Codes", style=discord.ButtonStyle.primary, row=4, emoji="📝")
-    async def btn_submitted_codes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Opens the submitted-codes routing settings panel."""
-        modal = SubmittedCodesRoutingModal(self.manager, self, self.subscriber_uid)
-        await interaction.response.send_modal(modal)
+    async def _build_settings_embed(self, interaction: discord.Interaction) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"⚙️ {BOT_NAME} — Settings & Configuration",
+            description="Configure monitoring, intervals, and routing preferences.",
+            color=0x7289DA
+        )
+        
+        is_realtime = self.manager.get_setting("realtime_monitoring_enabled", True)
+        interval = self.manager.get_setting("check_interval_seconds", CHECK_INTERVAL_SECONDS)
+        
+        embed.add_field(
+            name="🔄 Monitoring Status",
+            value=f"**Realtime:** {'🟢 ENABLED' if is_realtime else '🔴 DISABLED'}\n**Interval:** {interval}s",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🎯 Selected Platforms",
+            value=", ".join(self.selected_platforms) if self.selected_platforms else "None",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📊 Quick Stats",
+            value=(
+                f"• Platforms Configured: {len(self.manager.get_all_routes_summary())}\n"
+                f"• Telegram Channels: {sum(len(v) for v in self.manager.get_telegram_sources().values())}\n"
+                f"• Web Sources: {len(self.manager.get_web_sources())}"
+            ),
+            inline=False
+        )
+        
+        embed.set_footer(text=f"{BOT_NAME} • Use Action dropdown for quick operations", icon_url=BOT_AVATAR_URL)
+        return embed
+
+    async def _build_help_embed(self, interaction: discord.Interaction) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"❓ {BOT_NAME} — Help & Commands",
+            description="Navigate the dashboard using the buttons above.",
+            color=0x5865F2
+        )
+        
+        embed.add_field(
+            name="🧭 Navigation",
+            value=(
+                "• **🏠 Home** — Overview of monitoring status and platform routes\n"
+                "• **⚡ Active Codes** — Unified view of all live bonus drops\n"
+                "• **⚙️ Settings** — Configure monitoring and preferences\n"
+                "• **❓ Help** — This help panel\n"
+                "• **🔧 Tools** — Stake calculators and utilities"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🎮 Quick Actions",
+            value=(
+                "• **Platform Dropdowns** — Select platforms for bulk operations\n"
+                "• **Action Dropdown** — Add/remove channels, webhooks, sources\n"
+                "• **Pagination** — Navigate through multiple pages\n"
+                "• **Refresh** — Update data in real-time"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📋 Slash Commands",
+            value=(
+                "`/activecodes` — All active Stake.us & Stake.com codes\n"
+                "`/activeus` — Only Stake.us codes\n"
+                "`/activecom` — Only Stake.com codes\n"
+                "`/dashboard` — Open this control panel\n"
+                "`/help` — Show this help\n"
+                "`/info` — Bot information\n"
+                "`/links` — Affiliate & community links"
+            ),
+            inline=False
+        )
+        
+        embed.set_footer(text=f"{BOT_NAME} • Enterprise Ready", icon_url=BOT_AVATAR_URL)
+        return embed
+
+
+# =============================================
+# Navigation Button
+# =============================================
+class NavButton(discord.ui.Button):
+    def __init__(self, label: str, custom_id: str, style: discord.ButtonStyle, row: int):
+        super().__init__(label=label, custom_id=custom_id, style=style, row=row)
+    
+    async def callback(self, interaction: discord.Interaction):
+        view: DashboardView = self.view
+        section_map = {
+            "nav_home": "home",
+            "nav_activecodes": "activecodes",
+            "nav_settings": "settings",
+            "nav_help": "help",
+            "nav_tools": "tools",
+        }
+        view.current_section = section_map.get(self.custom_id, "home")
+        view.page_index = 0
+        await view.update_display(interaction)
+
+
+# =============================================
+# Pagination Button
+# =============================================
+class PaginationButton(discord.ui.Button):
+    def __init__(self, label: str, custom_id: str, style: discord.ButtonStyle, row: int, disabled: bool = False):
+        super().__init__(label=label, custom_id=custom_id, style=style, row=row, disabled=disabled)
+    
+    async def callback(self, interaction: discord.Interaction):
+        view: DashboardView = self.view
+        if self.custom_id == "page_prev":
+            view.page_index = max(0, view.page_index - 1)
+        elif self.custom_id == "page_next":
+            view.page_index += 1
+        elif self.custom_id == "page_refresh":
+            view.page_index = 0
+        await view.update_display(interaction)
+
+
+# =============================================
+# Quick Action Button
+# =============================================
+class QuickActionButton(discord.ui.Button):
+    def __init__(self, label: str, custom_id: str, style: discord.ButtonStyle, row: int):
+        super().__init__(label=label, custom_id=custom_id, style=style, row=row)
+    
+    async def callback(self, interaction: discord.Interaction):
+        view: DashboardView = self.view
+        if self.custom_id == "action_add_channel":
+            if view.subscriber_uid:
+                await interaction.response.send_message("Channel management is owner-controlled.", ephemeral=True)
+                return
+            modal = AddChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_remove_channel":
+            if view.subscriber_uid:
+                await interaction.response.send_message("Channel management is owner-controlled.", ephemeral=True)
+                return
+            modal = RemoveChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_add_webhook":
+            if view.subscriber_uid:
+                await interaction.response.send_message("Webhook management is owner-controlled.", ephemeral=True)
+                return
+            modal = AddWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_remove_webhook":
+            if view.subscriber_uid:
+                await interaction.response.send_message("Webhook management is owner-controlled.", ephemeral=True)
+                return
+            modal = RemoveWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_submitted_codes":
+            modal = SubmittedCodesRoutingModal(view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_my_routes":
+            embed = create_sources_embed(view.manager)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        elif self.custom_id == "action_notifications":
+            await interaction.response.send_message("Notification preferences coming soon!", ephemeral=True)
+        elif self.custom_id == "action_toggle_monitor":
+            if view.subscriber_uid:
+                await interaction.response.send_message(
+                    "Monitoring is managed by the bot owner. Your subscriber dashboard controls personal routes only.",
+                    ephemeral=True
+                )
+                return
+            current = view.manager.get_setting("realtime_monitoring_enabled", True)
+            new_state = not current
+            view.manager.set_setting("realtime_monitoring_enabled", new_state)
+
+            if hasattr(interaction.client, "background_monitor_task"):
+                if new_state and not interaction.client.background_monitor_task.is_running():
+                    interaction.client.background_monitor_task.start()
+                elif not new_state and interaction.client.background_monitor_task.is_running():
+                    interaction.client.background_monitor_task.cancel()
+
+            new_embed = create_dashboard_embed(view.manager, interaction.client, view.subscriber_uid)
+            await interaction.response.edit_message(embeds=new_embed, view=view)
+            state_str = "ENABLED 🟢" if new_state else "PAUSED 🔴"
+            await interaction.followup.send(f"Real-time monitoring is now **{state_str}**.", ephemeral=True)
 
 
 # ----------------------------------------------------
@@ -2552,9 +2803,8 @@ def run_discord_bot():
         if is_auth:
             uid = str(ctx.author.id)
             is_owner = manager.is_owner(uid)
-            embeds = create_dashboard_embed(manager, bot, subscriber_uid=None if is_owner else uid)
-            view = DashboardView(manager)
-            await ctx.send(embeds=embeds, view=view)
+            view = DashboardView(manager, bot, subscriber_uid=None if is_owner else uid)
+            await ctx.send(view=view, ephemeral=False)
         else:
             embed = create_public_dashboard_embed()
             view = PublicDashboardView()
@@ -2787,20 +3037,7 @@ def run_discord_bot():
                     discord.SelectOption(label="Degen", description="Degen Drops with Media", emoji="🔥"),
                     discord.SelectOption(label="Qzino", description="Qzino AI Promotions", emoji="🎲"),
                     discord.SelectOption(label="Goated", description="Goated VIP Drops", emoji="🐐"),
-                    discord.SelectOption(label="MYPRIZE.US", description="MYPRIZE.US Exclusive Offers", emoji="💎"),
-                    discord.SelectOption(label="CrownCoins", description="CrownCoins Social Casino Sweeps", emoji="👑"),
-                    discord.SelectOption(label="RealPrize", description="RealPrize Referral Rewards", emoji="🎁"),
-                    discord.SelectOption(label="AceBet Casino", description="AceBet Crypto Casino Drops", emoji="🎰"),
-                    discord.SelectOption(label="LoneStar Casino", description="LoneStar Texas-Style Promos", emoji="⭐"),
-                    discord.SelectOption(label="Chanced Casino", description="Chanced Lucky Drop Events", emoji="🍀"),
-                    discord.SelectOption(label="PULSZ", description="PULSZ Platform", emoji="💎"),
                     discord.SelectOption(label="THRILL", description="THRILL Platform", emoji="🎢"),
-                    discord.SelectOption(label="MODO", description="MODO Platform", emoji="🎮"),
-                    discord.SelectOption(label="BABA", description="BABA Casino", emoji="🎰"),
-                    discord.SelectOption(label="COOKED.US", description="COOKED.US Platform", emoji="🍳"),
-                    discord.SelectOption(label="COOKED.COM", description="COOKED.COM Platform", emoji="🍳"),
-                    discord.SelectOption(label="WOWVEGAS", description="WOWVEGAS Platform", emoji="🌟"),
-                    discord.SelectOption(label="YAYCASINO", description="YAYCASINO Platform", emoji="🎉"),
                     discord.SelectOption(label="WINNA", description="WINNA Platform", emoji="🏆"),
                     discord.SelectOption(label="Stake.us & Stake.com", description="Dual Stake Combined", emoji="🎰"),
                     discord.SelectOption(label="Default", description="Default / Global Fallback", emoji="🌐"),
@@ -2912,20 +3149,7 @@ def run_discord_bot():
                     "rainbet": Platform.RAINBET,
                     "degen": Platform.DEGEN,
                     "goated": Platform.GOATED,
-                    "myprize.us": Platform.MYPRIZE_US, "myprize": Platform.MYPRIZE_US,
-                    "crowncoins": Platform.CROWNSCOINS,
-                    "realprize": Platform.REALPRIZE,
-                    "acebet": Platform.ACEBET, "acebet casino": Platform.ACEBET,
-                    "lonestar": Platform.LONESTAR, "lonestar casino": Platform.LONESTAR,
-                    "chanced": Platform.CHANCED, "chanced casino": Platform.CHANCED,
-                    "pulsz": Platform.PULSZ,
                     "thrill": Platform.THRILL, "thrillcodes": Platform.THRILL,
-                    "modo": Platform.MODO,
-                    "baba": Platform.BABA, "baba casino": Platform.BABA,
-                    "cooked.us": Platform.COOKED_US, "cookedus": Platform.COOKED_US,
-                    "cooked.com": Platform.COOKED_COM, "cookedcom": Platform.COOKED_COM,
-                    "wowvegas": Platform.WOWVEGAS,
-                    "yaycasino": Platform.YAYCASINO,
                     "winna": Platform.WINNA, "winnacodes": Platform.WINNA,
                 }
                 if plat_lower in platform_aliases:

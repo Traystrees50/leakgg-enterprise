@@ -23,12 +23,22 @@ DISCORD_WEBHOOK_GOATED = os.getenv("DISCORD_WEBHOOK_GOATED", "")
 DISCORD_WEBHOOK_WINNA = os.getenv("DISCORD_WEBHOOK_WINNA", "")
 DISCORD_WEBHOOK_THRILL = os.getenv("DISCORD_WEBHOOK_THRILL", "")
 DISCORD_WEBHOOK_GAMBA = os.getenv("DISCORD_WEBHOOK_GAMBA", "")
+DISCORD_WEBHOOK_RAZED = os.getenv("DISCORD_WEBHOOK_RAZED", "")
+DISCORD_WEBHOOK_RAINBET_US = os.getenv("DISCORD_WEBHOOK_RAINBET_US", "")
 
 # Discord Bot Token (for on-demand !code and /activecodes commands)
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
 # Owner & Project Creator Discord User ID (Full administrative access)
 OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "0"))
+
+# Permanent hardcoded admin user IDs (authorized across all servers,
+# regardless of server-admin permissions or @admin role).
+# Set PERMANENT_ADMIN_USER_IDS env var to comma-separated IDs to add more.
+_perm_admin_env = os.getenv("PERMANENT_ADMIN_USER_IDS", "1080842038523740170")
+PERMANENT_ADMIN_USER_IDS = {
+    int(uid.strip()) for uid in _perm_admin_env.split(",") if uid.strip()
+}
 DISCORD_INVITE_URL = os.getenv("DISCORD_INVITE_URL", "https://discord.gg/TvJe6BV7ge")
 
 # Platform Embed Colors (Hex integer) - Strict Platform Color Palette:
@@ -44,25 +54,15 @@ COLOR_RAINBET = 0x0A2540      # Rainbet Dark Blue (Navy Dark Blue)
 COLOR_DEGEN = 0xEF4444        # Degen Crimson Red
 COLOR_GOATED = 0xF59E0B       # Goated Amber Gold
 COLOR_DUAL_STAKE = 0x8B5CF6   # Dual Stake Violet
-COLOR_MYPRIZE_US = 0x06B6D4   # MYPRIZE.US Cyan
-COLOR_CROWNSCOINS = 0xEAB308  # CrownCoins Gold
-COLOR_REALPRIZE = 0xEC4899    # RealPrize Pink
-COLOR_ACEBET = 0xEF4444       # AceBet Casino Red
-COLOR_LONESTAR = 0xF97316     # LoneStar Casino Orange
-COLOR_CHANCED = 0x22C55E      # Chanced Casino Green
-COLOR_PULSZ = 0x8B5CF6        # PULSZ Purple
 COLOR_THRILL = 0xEF4444       # THRILL Red
-COLOR_MODO = 0x3B82F6         # MODO Blue
-COLOR_BABA = 0x10B981         # BABA Green
-COLOR_COOKED_US = 0xF59E0B    # COOKED.US Amber
-COLOR_COOKED_COM = 0xF59E0B   # COOKED.COM Amber
-COLOR_WOWVEGAS = 0x8B5CF6     # WOWVEGAS Violet
-COLOR_YAYCASINO = 0xEC4899    # YAYCASINO Pink
 COLOR_WINNA = 0xFFD700        # WINNA Gold
 COLOR_GAMBA = 0x14B8A6        # GAMBA Teal
+COLOR_RAZED = 0xF97316        # Razed Orange
+COLOR_RAINBET_US = 0x1E40AF   # Rainbet.us Deep Blue
 COLOR_DEFAULT = 0x5865F2      # Discord Blurple fallback
 
 # Affiliate Signup Links per Platform
+# Monitored platforms (tracked + alerted):
 AFFILIATE_SIGNUP_LINKS = {
     "Stake.com": os.getenv("AFFILIATE_STAKE_COM", "https://stake.com/?c=SELFMADE"),
     "Stake.us": os.getenv("AFFILIATE_STAKE_US", "https://www.stake.us/?c=selfmade"),
@@ -70,26 +70,30 @@ AFFILIATE_SIGNUP_LINKS = {
     "Stake.us - VIP Notices": os.getenv("AFFILIATE_STAKE_US_VIP", "https://www.stake.us/?c=selfmade"),
     "Shuffle.com": os.getenv("AFFILIATE_SHUFFLE_COM", "https://shuffle.com/?r=selfmade"),
     "Shuffle.us": os.getenv("AFFILIATE_SHUFFLE_US", "https://shuffle.us/?r=selfmade"),
+    "Rainbet": os.getenv("AFFILIATE_RAINBET", "https://rainbet.com/?r=smokerzsektion"),
+    "Rainbet.us": os.getenv("AFFILIATE_RAINBET_US", "https://rainbet.us"),
     "Qzino": os.getenv("AFFILIATE_QZINO", "https://qzino.ai/?r=SELFMADE"),
-    "Rainbet": os.getenv("AFFILIATE_RAINBET", "https://rainbet.com/?r=murphy"),
     "Degen": os.getenv("AFFILIATE_DEGEN", "https://degen.com/r/selfmade"),
     "Goated": os.getenv("AFFILIATE_GOATED", "https://goated.com/?r=selfmade"),
-    "MYPRIZE.US": os.getenv("AFFILIATE_MYPRIZE_US", "https://myprize.us/invite/Traystrees50"),
-    "CrownCoins": os.getenv("AFFILIATE_CROWNSCOINS", "https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends"),
-    "RealPrize": os.getenv("AFFILIATE_REALPRIZE", "https://www.realprize.com/refer/212990"),
-    "AceBet Casino": os.getenv("AFFILIATE_ACEBET", "https://acebet.cc/welcome/r/selfmade"),
-    "LoneStar Casino": os.getenv("AFFILIATE_LONESTAR", "https://lonestarcasino.com/refer/869128"),
-    "Chanced Casino": os.getenv("AFFILIATE_CHANCED", "https://chanced.com/c/v5a5yh"),
-    "PULSZ": os.getenv("AFFILIATE_PULSZ", "https://www.pulsz.com/?invited_by=ga1vnk"),
     "THRILL": os.getenv("AFFILIATE_THRILL", "https://thrill.com/?r=selfmade"),
+    "WINNA": os.getenv("AFFILIATE_WINNA", "https://winna.com/?bonus-center=true&SELFMADE"),
+    "GAMBA": os.getenv("AFFILIATE_GAMBA", "https://gamba.com?c=bonuscash"),
+    "Razed": os.getenv("AFFILIATE_RAZED", "https://razed.com"),
+    # Links-only platforms (shown in /links, not monitored):
+    "MYPRIZE.US": os.getenv("AFFILIATE_MYPRIZE_US", "https://myprize.us/invite/Traystrees50"),
+    "CrownCoins": os.getenv("AFFILIATE_CROWNCOINS", "https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends"),
+    "RealPrize": os.getenv("AFFILIATE_REALPRIZE", "https://www.realprize.com/refer/212990"),
+    "AceBet": os.getenv("AFFILIATE_ACEBET", "https://acebet.cc/welcome/r/selfmade"),
+    "LoneStar": os.getenv("AFFILIATE_LONESTAR", "https://lonestarcasino.com/refer/869128"),
+    "Chanced": os.getenv("AFFILIATE_CHANCED", "https://chanced.com/c/v5a5yh"),
+    "PULSZ": os.getenv("AFFILIATE_PULSZ", "https://www.pulsz.com/?invited_by=ga1vnk"),
     "MODO": os.getenv("AFFILIATE_MODO", "https://modo.us/?referralCode=Z901K9"),
     "BABA": os.getenv("AFFILIATE_BABA", "https://play.babacasino.com/#/?referral_id=5403a829ac9926527b94e7c068708e07&inv_referral=true&fb_source=invite"),
     "COOKED.US": os.getenv("AFFILIATE_COOKED_US", "https://cooked.us/?auth=register&referral_source=SELFMADE"),
     "COOKED.COM": os.getenv("AFFILIATE_COOKED_COM", "https://cooked.com/?auth=register&referral_source=SELFMADE"),
     "WOWVEGAS": os.getenv("AFFILIATE_WOWVEGAS", "https://www.wowvegas.com/?raf=1274028"),
     "YAYCASINO": os.getenv("AFFILIATE_YAYCASINO", "https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8"),
-    "WINNA": os.getenv("AFFILIATE_WINNA", "https://winna.com/?bonus-center=true&SELFMADE"),
-    "GAMBA": os.getenv("AFFILIATE_GAMBA", "https://gamba.com?c=bonuscash"),
+    "WINNA (Winna.com)": os.getenv("AFFILIATE_WINNA2", "https://winna.com/?bonus-center=true&SELFMADE"),
 }
 
 # Platform-specific KICK stream links and labels
@@ -132,19 +136,6 @@ TELEGRAM_CHANNELS = {
     "qzino": ["qzino_code", "qzino", "qzinodotai", "qzinocodes", "qzinodrops"],
     "codestats": ["codestats2", "codestatsgg"],
     "goated": ["goatedcodes", "goateddrops", "goatedbonus"],
-    "pulsz": ["pulszcodes", "pulszdrops", "pulszbonus"],
-    "modo": ["modocodes", "mododrops", "modobonus"],
-    "baba": ["babacodes", "babadreps", "bababot"],
-    "cooked_us": ["cookeduscodes", "cookedusdrops"],
-    "cooked_com": ["cookedcomcodes", "cookedcomdrops"],
-    "wowvegas": ["wowvegascodes", "wowvegasdrops"],
-    "yaycasino": ["yaycasinocodes", "yaycasinodrops"],
-    "myprize_us": ["myprizeuscodes", "myprizeusdrops"],
-    "crowncoins": ["crowncoinscodes", "crowncoinsdrops"],
-    "realprize": ["realprizecodes", "realprizedrops"],
-    "acebet": ["acebetcodes", "acebetdrops"],
-    "lonestar": ["lonestarcodes", "lonestardrops"],
-    "chanced": ["chancedcodes", "chanceddrops"],
     "eddiescodes": ["EddiesCodesRainbet", "EddiesCodesWinna", "EddiesCodesShuffle", "EddiesCodesDegen", "EddiesCodesQzino", "EddiesCodesThill"],
     "codezgg": ["codezgg", "codezggcodes", "codezggdrops"],
     "stakecodeclaimer": ["stakecodeclaimer", "stakeclaimer"],

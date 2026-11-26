@@ -7,12 +7,11 @@ from config import (
     COLOR_STAKE_COM, COLOR_STAKE_US, COLOR_SHUFFLE_COM, COLOR_SHUFFLE_US,
     COLOR_QZINO, COLOR_RAINBET, COLOR_DEGEN, COLOR_GOATED, COLOR_DUAL_STAKE,
     COLOR_DEFAULT, COLOR_STAKE_COM_VIP_NOTICES, COLOR_STAKE_US_VIP_NOTICES,
-    COLOR_MYPRIZE_US, COLOR_CROWNSCOINS, COLOR_REALPRIZE, COLOR_ACEBET,
-    COLOR_LONESTAR, COLOR_CHANCED, COLOR_PULSZ,
-    COLOR_THRILL, COLOR_MODO, COLOR_BABA,
-    COLOR_COOKED_US, COLOR_COOKED_COM, COLOR_WOWVEGAS, COLOR_YAYCASINO,
+    COLOR_THRILL,
     COLOR_WINNA,
     COLOR_GAMBA,
+    COLOR_RAZED,
+    COLOR_RAINBET_US,
     AFFILIATE_SIGNUP_LINKS
 )
 
@@ -25,84 +24,55 @@ class Platform(str, Enum):
     SHUFFLE_US = "Shuffle.us"
     QZINO = "Qzino"
     RAINBET = "Rainbet"
+    RAINBET_US = "Rainbet.us"
     DEGEN = "Degen"
     GOATED = "Goated"
     DUAL_STAKE = "Stake.us & Stake.com"
-    MYPRIZE_US = "MYPRIZE.US"
-    CROWNSCOINS = "CrownCoins"
-    REALPRIZE = "RealPrize"
-    ACEBET = "AceBet Casino"
-    LONESTAR = "LoneStar Casino"
-    CHANCED = "Chanced Casino"
-    PULSZ = "PULSZ"
     THRILL = "THRILL"
-    MODO = "MODO"
-    BABA = "BABA"
-    COOKED_US = "COOKED.US"
-    COOKED_COM = "COOKED.COM"
-    WOWVEGAS = "WOWVEGAS"
-    YAYCASINO = "YAYCASINO"
     WINNA = "WINNA"
     GAMBA = "GAMBA"
+    RAZED = "Razed"
     UNKNOWN = "Unknown Platform"
 
     @classmethod
     def from_str(cls, text: str) -> "Platform":
         t = text.lower()
+        # Step 1: Dual-platform must be checked first
         if "dual" in t or ("stake.us" in t and "stake.com" in t) or ("stake us" in t and "stake com" in t):
             return cls.DUAL_STAKE
+        # Step 2: Explicit Stake VIP sub-platforms
+        elif "stake.com - vip" in t or "stake.com vip" in t or "stakecom vip" in t:
+            return cls.STAKE_COM_VIP_NOTICES
+        elif "stake.us - vip" in t or "stake.us vip" in t or "stakeus vip" in t:
+            return cls.STAKE_US_VIP_NOTICES
+        # Step 3: Explicit Stake.us / Stake.com keywords — evaluated BEFORE Shuffle
+        elif "stake.us" in t or "stakeus" in t or "stake-us" in t or "stake us" in t:
+            return cls.STAKE_US
+        elif "stake.com" in t or "stakecom" in t or "stake-com" in t or "stake com" in t or "stake" in t:
+            return cls.STAKE_COM
+        # Step 4: Non-Stake platforms
         elif "shuffle.us" in t or "shuffle us" in t or "shuffle_us" in t:
             return cls.SHUFFLE_US
         elif "shuffle.com" in t or "shuffle com" in t or "shuffle" in t:
             return cls.SHUFFLE_COM
         elif "qzino" in t:
             return cls.QZINO
+        elif "rainbet.us" in t or "rainbetus" in t:
+            return cls.RAINBET_US
         elif "rainbet" in t:
             return cls.RAINBET
         elif "degen" in t:
             return cls.DEGEN
         elif "goated" in t:
             return cls.GOATED
-        elif "stake.com - vip" in t or "stake.com vip" in t or "stakecom vip" in t:
-            return cls.STAKE_COM_VIP_NOTICES
-        elif "stake.us - vip" in t or "stake.us vip" in t or "stakeus vip" in t:
-            return cls.STAKE_US_VIP_NOTICES
-        elif "stake-us" in t or "stake.us" in t or "stakeus" in t or "stake us" in t:
-            return cls.STAKE_US
-        elif "stake-com" in t or "stake.com" in t or "stakecom" in t or "stake com" in t or "stake" in t:
-            return cls.STAKE_COM
-        elif "myprize" in t or "myprize.us" in t:
-            return cls.MYPRIZE_US
-        elif "crown" in t or "crowncoins" in t:
-            return cls.CROWNSCOINS
-        elif "realprize" in t:
-            return cls.REALPRIZE
-        elif "acebet" in t:
-            return cls.ACEBET
-        elif "lonestar" in t:
-            return cls.LONESTAR
-        elif "chanced" in t:
-            return cls.CHANCED
-        elif "pulsz" in t:
-            return cls.PULSZ
         elif "thrill" in t:
             return cls.THRILL
-        elif "modo" in t:
-            return cls.MODO
-        elif "baba" in t or "babacasino" in t:
-            return cls.BABA
-        elif "cooked.us" in t or "cooked us" in t:
-            return cls.COOKED_US
-        elif "cooked.com" in t or "cooked com" in t or "cookedcom" in t:
-            return cls.COOKED_COM
-        elif "wowvegas" in t:
-            return cls.WOWVEGAS
-        elif "yaycasino" in t:
-            return cls.YAYCASINO
         elif "winna" in t:
             return cls.WINNA
         elif "gamba" in t:
             return cls.GAMBA
+        elif "razed" in t:
+            return cls.RAZED
         return cls.UNKNOWN
 
     @property
@@ -116,25 +86,14 @@ class Platform(str, Enum):
             Platform.SHUFFLE_US: COLOR_SHUFFLE_US,
             Platform.QZINO: COLOR_QZINO,
             Platform.RAINBET: COLOR_RAINBET,
+            Platform.RAINBET_US: COLOR_RAINBET_US,
             Platform.DEGEN: COLOR_DEGEN,
             Platform.GOATED: COLOR_GOATED,
             Platform.DUAL_STAKE: COLOR_DUAL_STAKE,
-            Platform.MYPRIZE_US: COLOR_MYPRIZE_US,
-            Platform.CROWNSCOINS: COLOR_CROWNSCOINS,
-            Platform.REALPRIZE: COLOR_REALPRIZE,
-            Platform.ACEBET: COLOR_ACEBET,
-            Platform.LONESTAR: COLOR_LONESTAR,
-            Platform.CHANCED: COLOR_CHANCED,
-            Platform.PULSZ: COLOR_PULSZ,
             Platform.THRILL: COLOR_THRILL,
-            Platform.MODO: COLOR_MODO,
-            Platform.BABA: COLOR_BABA,
-            Platform.COOKED_US: COLOR_COOKED_US,
-            Platform.COOKED_COM: COLOR_COOKED_COM,
-            Platform.WOWVEGAS: COLOR_WOWVEGAS,
-            Platform.YAYCASINO: COLOR_YAYCASINO,
             Platform.WINNA: COLOR_WINNA,
             Platform.GAMBA: COLOR_GAMBA,
+            Platform.RAZED: COLOR_RAZED,
         }
         return colors.get(self, COLOR_DEFAULT)
 
@@ -149,25 +108,14 @@ class Platform(str, Enum):
             Platform.SHUFFLE_US: "🔀 🇺🇸",
             Platform.QZINO: "🎲 🤖",
             Platform.RAINBET: "🌧️ ⚡",
+            Platform.RAINBET_US: "🌧️ 🇺🇸",
             Platform.DEGEN: "🔥 ⚡",
             Platform.GOATED: "🐐 👑",
             Platform.DUAL_STAKE: "🎰 🌐",
-            Platform.MYPRIZE_US: "💎 🇺🇸",
-            Platform.CROWNSCOINS: "👑 🏆",
-            Platform.REALPRIZE: "🎁 🎉",
-            Platform.ACEBET: "🎰 🃏",
-            Platform.LONESTAR: "⭐ 🤠",
-            Platform.CHANCED: "🍀 🎲",
-            Platform.PULSZ: "💎 🎰",
             Platform.THRILL: "🎢 ⚡",
-            Platform.MODO: "🎮 🪙",
-            Platform.BABA: "🎰 🎪",
-            Platform.COOKED_US: "🍳 🇺🇸",
-            Platform.COOKED_COM: "🍳 🌍",
-            Platform.WOWVEGAS: "🌟 🎰",
-            Platform.YAYCASINO: "🎉 🎰",
             Platform.WINNA: "🏆 🎁",
             Platform.GAMBA: "🎲 🟢",
+            Platform.RAZED: "⚔️ 🔥",
         }
         return emojis.get(self, "🎁")
 
@@ -182,25 +130,14 @@ class Platform(str, Enum):
             Platform.SHUFFLE_US: "<@&1423076971759403089>",
             Platform.QZINO: "<@&1547759979199467680>",
             Platform.RAINBET: "<@&1423077406234906635>",
+            Platform.RAINBET_US: "<@&1423077406234906635>",
             Platform.DEGEN: "<@&1547761003775918130>",
             Platform.GOATED: "<@&1423077998805913680>",
             Platform.DUAL_STAKE: "<@&1268212613234298980> <@&1423076922337792094>",
-            Platform.MYPRIZE_US: "@MYPRIZEUSCODES",
-            Platform.CROWNSCOINS: "@CROWNCOINSCODES",
-            Platform.REALPRIZE: "@REALPRIZECODES",
-            Platform.ACEBET: "@ACEBETCODES",
-            Platform.LONESTAR: "@LONESTARCODES",
-            Platform.CHANCED: "@CHANCEDCODES",
-            Platform.PULSZ: "@PULSZCODES",
             Platform.THRILL: "@THRILLCODES",
-            Platform.MODO: "@MODOCODES",
-            Platform.BABA: "@BABACASINOCODES",
-            Platform.COOKED_US: "@COOKEDUSCODES",
-            Platform.COOKED_COM: "@COOKEDCOMCODES",
-            Platform.WOWVEGAS: "@WOWVEGASCODES",
-            Platform.YAYCASINO: "@YAYCASINOCODES",
             Platform.WINNA: "@WINNACODES",
             Platform.GAMBA: "@GAMBACODES",
+            Platform.RAZED: "@RAZEDCODES",
         }
         return tags.get(self, "")
 
@@ -215,24 +152,13 @@ class Platform(str, Enum):
             Platform.SHUFFLE_US: "https://shuffle.us",
             Platform.QZINO: "https://qzino.ai",
             Platform.RAINBET: "https://rainbet.com",
+            Platform.RAINBET_US: "https://rainbet.us",
             Platform.DEGEN: "https://degen.com",
             Platform.GOATED: "https://goated.com",
-            Platform.MYPRIZE_US: "https://myprize.us",
-            Platform.CROWNSCOINS: "https://crowncoinscasino.com",
-            Platform.REALPRIZE: "https://www.realprize.com",
-            Platform.ACEBET: "https://acebet.cc",
-            Platform.LONESTAR: "https://lonestarcasino.com",
-            Platform.CHANCED: "https://chanced.com",
-            Platform.PULSZ: "https://www.pulsz.com",
             Platform.THRILL: "https://thrill.com",
-            Platform.MODO: "https://modo.us",
-            Platform.BABA: "https://play.babacasino.com",
-            Platform.COOKED_US: "https://cooked.us",
-            Platform.COOKED_COM: "https://cooked.com",
-            Platform.WOWVEGAS: "https://www.wowvegas.com",
-            Platform.YAYCASINO: "https://www.yaycasino.com",
             Platform.WINNA: "https://winna.com",
             Platform.GAMBA: "https://gamba.com",
+            Platform.RAZED: "https://razed.com",
         }
         return urls.get(self, "https://stake.com")
 
@@ -288,6 +214,8 @@ class BonusCodeItem:
             return f"https://shuffle.us/?modal=c&md-code={encoded_code}"
         elif self.platform == Platform.RAINBET:
             return "https://rainbet.com/affiliates?modal=wallet&tab=redeem"
+        elif self.platform == Platform.RAINBET_US:
+            return "https://rainbet.us"
         elif self.platform == Platform.QZINO:
             return "https://qzino.ai/?r=SELFMADE"
         elif self.platform == Platform.DEGEN:
@@ -302,6 +230,8 @@ class BonusCodeItem:
             return "https://winna.com/?bonus-center=true&SELFMADE"
         elif self.platform == Platform.GAMBA:
             return "https://gamba.com"
+        elif self.platform == Platform.RAZED:
+            return "https://razed.com"
         else:
             return f"https://stake.com/settings/offers?type=drop&code={encoded_code}&currency=ltc&modal=redeemBonus"
 
@@ -345,43 +275,21 @@ class BonusCodeItem:
         elif self.platform == Platform.QZINO:
             return "https://qzino.ai/?r=SELFMADE"
         elif self.platform == Platform.RAINBET:
-            return "https://rainbet.com/?r=murphy"
+            return "https://rainbet.com/?r=smokerzsektion"
+        elif self.platform == Platform.RAINBET_US:
+            return "https://rainbet.us"
         elif self.platform == Platform.DEGEN:
             return "https://degen.com/r/selfmade"
         elif self.platform == Platform.GOATED:
             return "https://goated.com/?r=selfmade"
-        elif self.platform == Platform.MYPRIZE_US:
-            return "https://myprize.us/invite/Traystrees50"
-        elif self.platform == Platform.CROWNSCOINS:
-            return "https://crowncoinscasino.com/?utm_campaign=856db775-8290-42d7-93b4-76ddc67ddf4b&utm_source=friends"
-        elif self.platform == Platform.REALPRIZE:
-            return "https://www.realprize.com/refer/212990"
-        elif self.platform == Platform.ACEBET:
-            return "https://acebet.cc/welcome/r/selfmade"
-        elif self.platform == Platform.LONESTAR:
-            return "https://lonestarcasino.com/refer/869128"
-        elif self.platform == Platform.CHANCED:
-            return "https://chanced.com/c/v5a5yh"
-        elif self.platform == Platform.PULSZ:
-            return "https://www.pulsz.com/?invited_by=ga1vnk"
         elif self.platform == Platform.THRILL:
             return "https://thrill.com/?r=selfmade"
-        elif self.platform == Platform.MODO:
-            return "https://modo.us/?referralCode=Z901K9"
-        elif self.platform == Platform.BABA:
-            return "https://play.babacasino.com/#/?referral_id=5403a829ac9926527b94e7c068708e07&inv_referral=true&fb_source=invite"
-        elif self.platform == Platform.COOKED_US:
-            return "https://cooked.us/?auth=register&referral_source=SELFMADE"
-        elif self.platform == Platform.COOKED_COM:
-            return "https://cooked.com/?auth=register&referral_source=SELFMADE"
-        elif self.platform == Platform.WOWVEGAS:
-            return "https://www.wowvegas.com/?raf=1274028"
-        elif self.platform == Platform.YAYCASINO:
-            return "https://www.yaycasino.com/signup/7ab97436-a07a-4514-9506-bcbbcd2495e8"
         elif self.platform == Platform.WINNA:
             return "https://winna.com/?bonus-center=true&SELFMADE"
         elif self.platform == Platform.GAMBA:
             return AFFILIATE_SIGNUP_LINKS[Platform.GAMBA.value]
+        elif self.platform == Platform.RAZED:
+            return AFFILIATE_SIGNUP_LINKS.get(Platform.RAZED.value, "https://razed.com")
         return "https://stake.com/?c=SELFMADE"
 
     def to_stake_us_item(self) -> "BonusCodeItem":

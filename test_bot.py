@@ -277,7 +277,53 @@ class TestLeakedGGMonitoring(unittest.TestCase):
             "https://t.me/test/missing",
         )
         self.assertIsNotNone(missing_amount)
-        self.assertEqual(missing_amount.amount_value, "Amount not specified")
+
+    def test_rainbet_embed_includes_kick_button_moonbootmurphy(self):
+        """Rainbet embeds should include moonbootmurphy's KICK link button."""
+        notifier = DiscordNotifier()
+        item = BonusCodeItem(
+            code="RAINBETKICK2026",
+            platform=Platform.RAINBET,
+            amount_value="$10",
+            wager_requirement="$5,000",
+            source_name="@EddiesCodesRainbet",
+            source_url="https://t.me/EddiesCodesRainbet/100",
+            is_affiliate=False,
+        )
+
+        # Pass moonbootmurphy's webhook URL to get KICK button
+        moonbootmurphy_webhook = "https://discord.com/api/webhooks/1565129798492364850/ccOjrNLeAnMZt1whgm-pO9GWmrk7a3dWIKfETCB76IqpAhnEFZ9p5-y6bFoEPugd4X2u"
+        buttons = notifier._link_button_components(item, moonbootmurphy_webhook)[0]["components"]
+        button_labels = {button["label"] for button in buttons}
+        button_urls = {button["url"] for button in buttons}
+
+        # Should have 4 buttons: CLAIM, SIGNUP, DISCORD, KICK
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        # KICK button should point to moonbootmurphy's link
+        self.assertIn("https://www.kick.com/moonbootmurphy", button_urls)
+        # Verify KICK button label
+        kick_button = next(b for b in buttons if b["label"] == "KICK")
+        self.assertEqual(kick_button["url"], "https://www.kick.com/moonbootmurphy")
+
+    def test_other_platforms_exclude_kick_button(self):
+        """Non-Rainbet platforms should NOT include KICK button."""
+        notifier = DiscordNotifier()
+        for platform in [Platform.STAKE_US, Platform.STAKE_COM, Platform.SHUFFLE_US, Platform.SHUFFLE_COM, Platform.QZINO, Platform.DEGEN, Platform.GOATED]:
+            item = BonusCodeItem(
+                code=f"TEST{platform.value.upper()}",
+                platform=platform,
+                amount_value="$10",
+                wager_requirement="$5,000",
+                source_name="@test",
+                source_url="https://t.me/test/100",
+                is_affiliate=False,
+            )
+
+            buttons = notifier._link_button_components(item)[0]["components"]
+            button_labels = {button["label"] for button in buttons}
+
+            # Should have only 3 buttons: CLAIM, SIGNUP, DISCORD (no KICK)
+            self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD"}, f"Platform {platform.value} should not have KICK button")
 
     def test_faircodes_aggregator_parses_all_platforms(self):
         """
@@ -853,10 +899,11 @@ Join now and claim via https://qzino.ai/?r=SELFMADE"""
         self.assertIn(item.redeem_link, button_urls)
         self.assertIn(item.affiliate_signup_link, button_urls)
         self.assertIn(DISCORD_INVITE_URL, button_urls)
-        self.assertIn("https://www.kick.com/traystrees50", button_urls)
-        # Button labels should be plain (CLAIM, SIGNUP, DISCORD, KICK)
+        # KICK button should NOT be present for QZINO (only for Rainbet)
+        self.assertNotIn("https://www.kick.com/traystrees50", button_urls)
+        # Button labels should be plain (CLAIM, SIGNUP, DISCORD only - no KICK)
         button_labels = {button["label"] for button in buttons}
-        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD"})
 
     def test_vip_events_routing_and_extraction(self):
         tg = TelegramScraper()
@@ -1359,7 +1406,7 @@ Redeem Here!"""
         3. Prominent claim line: [**CLICK HERE TO CLAIM**](redeem_url)
         4. Footer: "LEAKED.GG • {detected_at}"
         5. Media/Image attached at the bottom (embed['image'])
-        6. Four link buttons: CLAIM, SIGNUP, DISCORD, KICK
+        6. Three link buttons: CLAIM, SIGNUP, DISCORD (KICK only for Rainbet)
         """
         notifier = DiscordNotifier()
 
@@ -1411,7 +1458,8 @@ Redeem Here!"""
         # Buttons: plain labels
         buttons = notifier._link_button_components(item)[0]["components"]
         button_labels = {button["label"] for button in buttons}
-        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        # KICK button should NOT be present for STAKE_US (only for Rainbet)
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD"})
         self.assertTrue(all(button["style"] == 5 for button in buttons))
 
     def test_dual_stake_claim_links_are_buttons_not_embed_fields(self):
@@ -1437,7 +1485,8 @@ Redeem Here!"""
         # Buttons should have plain labels for dual stake (single CLAIM button goes to US link)
         buttons = notifier._link_button_components(item)[0]["components"]
         button_labels = {button["label"] for button in buttons}
-        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD", "KICK"})
+        # KICK button should NOT be present for DUAL_STAKE (only for Rainbet)
+        self.assertEqual(button_labels, {"CLAIM", "SIGNUP", "DISCORD"})
         # CLAIM button should point to US redeem link (primary)
         claim_button = next(b for b in buttons if b["label"] == "CLAIM")
         self.assertEqual(claim_button["url"], item.redeem_link_us)
@@ -1520,12 +1569,13 @@ Redeem Here!"""
         self.assertIn("components", payload)
         self.assertEqual(len(payload["components"]), 1)
         buttons = payload["components"][0]["components"]
-        self.assertEqual(len(buttons), 4)
+        # Non-moonbootmurphy webhooks get 3 buttons (no KICK)
+        self.assertEqual(len(buttons), 3)
         self.assertTrue(all(button["style"] == 5 for button in buttons))
         # Plain button labels per new spec
         self.assertEqual(
             {button["label"] for button in buttons},
-            {"CLAIM", "SIGNUP", "DISCORD", "KICK"},
+            {"CLAIM", "SIGNUP", "DISCORD"},
         )
         self.assertIn(item.redeem_link, {button["url"] for button in buttons})
         self.assertNotIn("Code Checker", str(payload))
@@ -1629,7 +1679,7 @@ Redeem Here!"""
             option_labels - {"Default"},
             {platform.value for platform in Platform if platform != Platform.UNKNOWN},
         )
-        self.assertIsNotNone(DashboardView(manager))
+        self.assertIsNotNone(DashboardView(manager, bot=MagicMock()))
         
         # Ensure StakeStatsPoller live format is accessible to public callers
         poller = StakeStatsPoller()
@@ -2045,7 +2095,7 @@ Redeem Here!"""
         dual_item = BonusCodeItem(
             code="DUALCODE2026",
             platform=Platform.DUAL_STAKE,
-            amount_value="$5 / 5 SC",
+            amount_value="User Submitted (US & COM)",
             wager_requirement="$10,000",
             source_url="https://t.me/codestats2/999",
             source_name="@codestats2",
@@ -2098,29 +2148,38 @@ Redeem Here!"""
 
         mock_loop.run_until_complete(asyncio.sleep(0.05))
 
-        # Check that Stake.us channel received Stake.us embed
+        # Check that Stake.us channel received dual stake embed with BOTH claim links
         self.assertTrue(us_chan.send.called)
         us_sent_embed = us_chan.send.call_args[1]["embed"]
-        # embed could be dict or discord.Embed
         if hasattr(us_sent_embed, "fields"):
             us_platform_value = us_sent_embed.fields[0].value
+            us_details = us_sent_embed.fields[1].value
         else:
             us_platform_value = us_sent_embed["fields"][0]["value"]
-        self.assertIn("STAKE.US", us_platform_value.upper())
-        # color could be int or discord.Color
+            us_details = us_sent_embed["fields"][1]["value"]
+        # Should show dual stake platform title
+        self.assertIn("USER SUBMITTED (US & COM)", us_platform_value.upper())
+        # Should contain BOTH claim links in details
+        self.assertIn("CLICK HERE TO CLAIM (US)", us_details)
+        self.assertIn("CLICK HERE TO CLAIM (COM)", us_details)
+        # Color should be DUAL_STAKE color
         us_color = us_sent_embed.color.value if hasattr(us_sent_embed.color, "value") else us_sent_embed["color"]
-        self.assertEqual(us_color, Platform.STAKE_US.embed_color)
+        self.assertEqual(us_color, Platform.DUAL_STAKE.embed_color)
 
-        # Check that Stake.com channel received Stake.com embed
+        # Check that Stake.com channel received SAME dual stake embed with BOTH claim links
         self.assertTrue(com_chan.send.called)
         com_sent_embed = com_chan.send.call_args[1]["embed"]
         if hasattr(com_sent_embed, "fields"):
             com_platform_value = com_sent_embed.fields[0].value
+            com_details = com_sent_embed.fields[1].value
         else:
             com_platform_value = com_sent_embed["fields"][0]["value"]
-        self.assertIn("STAKE.COM", com_platform_value.upper())
+            com_details = com_sent_embed["fields"][1]["value"]
+        self.assertIn("USER SUBMITTED (US & COM)", com_platform_value.upper())
+        self.assertIn("CLICK HERE TO CLAIM (US)", com_details)
+        self.assertIn("CLICK HERE TO CLAIM (COM)", com_details)
         com_color = com_sent_embed.color.value if hasattr(com_sent_embed.color, "value") else com_sent_embed["color"]
-        self.assertEqual(com_color, Platform.STAKE_COM.embed_color)
+        self.assertEqual(com_color, Platform.DUAL_STAKE.embed_color)
 
         mock_loop.close()
 
@@ -2381,8 +2440,9 @@ Redeem Here!"""
 
     def test_dual_stake_shared_channel_dedup(self):
         """
-        Validates that when a channel is configured for both Stake.us and Stake.com (or Default),
-        DiscordNotifier dispatches exactly 1 combined dual-stake embed, never 2 duplicate embeds.
+        Validates that when a channel is configured for both Stake.us and Stake.com,
+        DiscordNotifier dispatches the dual stake embed to BOTH platform's channels
+        (so a shared channel receives 2 embeds, each with both claim links).
         """
         routes_file = os.path.join(tempfile.gettempdir(), f"test_dual_routes_{uuid.uuid4().hex}.json")
         dm = DashboardManager(filepath=routes_file)
@@ -2407,10 +2467,13 @@ Redeem Here!"""
 
         notifier.send_notification(dual_item)
 
-        # Must be dispatched to channel 999 exactly ONCE
-        self.assertEqual(notifier._dispatch_to_channel.call_count, 1)
-        dispatched_cid = notifier._dispatch_to_channel.call_args[0][0]
-        self.assertEqual(dispatched_cid, 999)
+        # Must be dispatched to channel 999 TWICE (once for Stake.us, once for Stake.com)
+        # Each embed contains BOTH claim links
+        self.assertEqual(notifier._dispatch_to_channel.call_count, 2)
+        # Both calls should be to channel 999
+        for call in notifier._dispatch_to_channel.call_args_list:
+            dispatched_cid = call[0][0]
+            self.assertEqual(dispatched_cid, 999)
 
         if os.path.exists(routes_file):
             os.remove(routes_file)

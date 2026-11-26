@@ -1,8 +1,9 @@
 import sys, codecs
+import discord
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
 
 from dashboard_manager import DashboardManager
-from discord_bot import PlatformMultiSelect, SAMPLE_TEST_ITEMS
+from discord_bot import PlatformSelect, SAMPLE_TEST_ITEMS
 from embed_editor import EmbedTemplateManager
 from models import Platform
 
@@ -19,7 +20,14 @@ non_monitored = [k for k in all_keys if k not in monitored]
 print(f'Non-monitored in summary: {non_monitored}')
 assert not non_monitored, f'FOUND non-monitored: {non_monitored}'
 
-pm_select = PlatformMultiSelect()
+pm_select = PlatformSelect(
+    options=[
+        discord.SelectOption(label="Stake.us", value="Stake.us"),
+        discord.SelectOption(label="Stake.com", value="Stake.com"),
+    ],
+    row=1,
+    label="Test",
+)
 dropdown_labels = [opt.label for opt in pm_select.options]
 print(f'Dropdown options: {dropdown_labels}')
 non_monitored_d = [l for l in dropdown_labels if l not in monitored and l != 'Default']

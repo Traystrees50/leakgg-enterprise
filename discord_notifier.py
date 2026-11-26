@@ -90,21 +90,39 @@ class DiscordNotifier:
     def build_embed(self, item: BonusCodeItem) -> Dict[str, Any]:
         """
         Builds a clean LEAKED.GG branded Discord embed.
-        No title. Platform field with details. Bold text for labels.
-        Footer: "LEAKED.GG • {detected_at}"
+        Platform field shows platform name + code. Details only shown if meaningful values exist.
+        Footer: "We Value Responsible Gaming - Leaked.gg"
         Image attached when present (required for DEGEN/QZINO).
         """
         platform_name = item.platform.value.upper()
-        source_name = item.source_name or "Unknown Source"
         color = item.platform.embed_color
 
-        bullet_lines = (
-            f"**Code:** `{item.clean_code}`\n"
-            f"**Value:** {item.amount_value or 'Exclusive Offer'}\n"
-            f"**Total Drop Limit:** {item.claims_count or 'Unlimited'}\n"
-            f"**Requirements:** {item.wager_requirement or 'None'}"
-        )
+        # Check for user submitted dual stake
+        is_user_submitted_dual = (
+            item.is_dual_stake or item.platform == Platform.DUAL_STAKE
+        ) and item.amount_value and "User Submitted" in item.amount_value
 
+        # Only include meaningful details (skip defaults/placeholders)
+        detail_lines = []
+
+        # Always show the code prominently (easy to copy)
+        detail_lines.append(f"**Code:** `{item.clean_code}`")
+
+        # For user submitted dual stake: skip Value line entirely, show special platform title
+        # For others: only show value if it's a real value, not a placeholder
+        placeholder_values = {"Exclusive Offer", "Amount not specified", "User Submitted (US & COM)", "User Submitted Stake.com Drop", "User Submitted Stake.us Drop"}
+        if item.amount_value and item.amount_value not in placeholder_values:
+            detail_lines.append(f"**Value:** {item.amount_value}")
+
+        # Only show claims if it's a real limit
+        if item.claims_count and item.claims_count not in {"Unlimited", "Unknown"}:
+            detail_lines.append(f"**Total Drop Limit:** {item.claims_count}")
+
+        # Only show wager if it's a real requirement
+        if item.wager_requirement and item.wager_requirement not in {"Not specified", "None", "N/A"}:
+            detail_lines.append(f"**Requirements:** {item.wager_requirement}")
+
+        # Claim link(s) - always show
         if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
             claim_line = (
                 f"[**CLICK HERE TO CLAIM (US)**]({item.redeem_link_us})  "
@@ -113,15 +131,24 @@ class DiscordNotifier:
         else:
             claim_line = f"[**CLICK HERE TO CLAIM**]({item.redeem_link})"
 
+        detail_lines.append("")  # blank line before claim link
+        detail_lines.append(claim_line)
+
+        # Platform field: special handling for user submitted dual stake
+        if is_user_submitted_dual:
+            platform_display = "NEW USER SUBMITTED (US & COM) CODE DETECTED"
+        else:
+            platform_display = f"{platform_name}  NEW DROP DETECTED"
+
         fields = [
             {
                 "name": "**Platform**",
-                "value": f"{platform_name}  NEW DROP DETECTED",
+                "value": platform_display,
                 "inline": False,
             },
             {
                 "name": "**Details**",
-                "value": f"{bullet_lines}\n\n{claim_line}",
+                "value": "\n".join(detail_lines),
                 "inline": False,
             }
         ]
@@ -137,38 +164,42 @@ class DiscordNotifier:
 
         return embed
 
-    @staticmethod
-    def _link_button_definitions(item: BonusCodeItem) -> List[tuple[str, str]]:
-        return [
+    # Moonbootmurphy's Rainbet webhook - only this webhook gets KICK button
+    MOONBOOTMURPHY_WEBHOOK = "https://discord.com/api/webhooks/1565129798492364850/ccOjrNLeAnMZt1whgm-pO9GWmrk7a3dWIKfETCB76IqpAhnEFZ9p5-y6bFoEPugd4X2u"
+
+    def _link_button_definitions(self, item: BonusCodeItem, target_webhook: Optional[str] = None) -> List[tuple[str, str]]:
+        buttons = [
             ("CLAIM", item.redeem_link),
             ("SIGNUP", item.affiliate_signup_link),
             ("DISCORD", DISCORD_INVITE_URL),
-            ("KICK", get_kick_url_for_platform(item.platform.value)),
         ]
+        # Only include KICK button for Rainbet sent to moonbootmurphy's webhook
+        if item.platform == Platform.RAINBET and target_webhook and target_webhook == self.MOONBOOTMURPHY_WEBHOOK:
+            buttons.append(("KICK", "https://www.kick.com/moonbootmurphy"))
+        return buttons
 
-    def _link_button_components(self, item: BonusCodeItem) -> List[Dict[str, Any]]:
+    def _link_button_components(self, item: BonusCodeItem, target_webhook: Optional[str] = None) -> List[Dict[str, Any]]:
         return [{
             "type": 1,
             "components": [
                 {"type": 2, "style": 5, "label": label, "url": url}
-                for label, url in self._link_button_definitions(item)
+                for label, url in self._link_button_definitions(item, target_webhook)
             ],
         }]
 
     def _send_single_item_notification(self, item: BonusCodeItem, target_webhooks: List[str], target_channels: List[int]) -> bool:
         embed_dict = self.build_embed(item)
         role_tag = item.platform.role_tag
-        # Webhook payload: exclude role tags for Rainbet (clean posts without @ mentions)
-        webhook_payload = {
-            "embeds": [embed_dict],
-            "components": self._link_button_components(item),
-        }
-        if role_tag and item.platform != Platform.RAINBET:
-            webhook_payload["content"] = role_tag
-
+        
         success = False
-        # 1. Dispatch via Webhook(s)
+        # 1. Dispatch via Webhook(s) - each webhook gets its own components (for KICK button logic)
         for wh in list(dict.fromkeys([w for w in target_webhooks if w])):
+            webhook_payload = {
+                "embeds": [embed_dict],
+                "components": self._link_button_components(item, wh),
+            }
+            if role_tag and item.platform != Platform.RAINBET:
+                webhook_payload["content"] = role_tag
             try:
                 resp = requests.post(
                     wh,
@@ -185,11 +216,13 @@ class DiscordNotifier:
                 logger.error(f"Exception while sending Discord webhook: {e}")
 
         # 2. If bot client is connected and channels are configured, post to all direct channels
+        # For channel posts, no KICK button (only moonbootmurphy's webhook gets it)
+        channel_components = self._link_button_components(item, None)
         if self.bot_client is not None:
             try:
                 unique_channels = list(dict.fromkeys([int(c) for c in target_channels if c]))
                 for cid in unique_channels:
-                    self._dispatch_to_channel(cid, embed_dict, item)
+                    self._dispatch_to_channel(cid, embed_dict, item, channel_components)
                     success = True
             except Exception as e:
                 logger.warning(f"Direct channel dispatch error: {e}")
@@ -237,57 +270,38 @@ class DiscordNotifier:
             return self._send_subscriber_notification(item, subscriber_uid)
 
         if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
-            us_item = item.to_stake_us_item()
-            com_item = item.to_stake_com_item()
-
+            # For dual stake items: post to BOTH Stake.us AND Stake.com channels/webhooks
+            # Each embed contains BOTH claim links (US and COM)
             us_webhooks = set(self.dashboard_manager.get_webhooks(Platform.STAKE_US))
             us_channels = set(self.dashboard_manager.get_channels(Platform.STAKE_US))
 
             com_webhooks = set(self.dashboard_manager.get_webhooks(Platform.STAKE_COM))
             com_channels = set(self.dashboard_manager.get_channels(Platform.STAKE_COM))
 
-            # Destinations configured for BOTH platforms (or fallback to Default if neither configured)
-            shared_webhooks = list(us_webhooks.intersection(com_webhooks))
-            shared_channels = list(us_channels.intersection(com_channels))
+            success = False
 
-            exclusive_us_webhooks = list(us_webhooks - set(shared_webhooks))
-            exclusive_us_channels = list(us_channels - set(shared_channels))
+            # Send to all Stake.us destinations
+            if us_webhooks or us_channels:
+                s_us = self._send_single_item_notification(item, list(us_webhooks), list(us_channels))
+                success = success or s_us
 
-            exclusive_com_webhooks = list(com_webhooks - set(shared_webhooks))
-            exclusive_com_channels = list(com_channels - set(shared_channels))
+            # Send to all Stake.com destinations
+            if com_webhooks or com_channels:
+                s_com = self._send_single_item_notification(item, list(com_webhooks), list(com_channels))
+                success = success or s_com
 
-            # Check if neither platform is configured -> fallback to Default routes ONCE (combined card)
+            # Fallback to Default if neither platform has routes configured
             if not us_webhooks and not us_channels and not com_webhooks and not com_channels:
                 def_webhooks = self.dashboard_manager.get_webhooks("Default")
                 if self.default_webhook_url and self.default_webhook_url not in def_webhooks:
                     def_webhooks.append(self.default_webhook_url)
                 def_channels = self.dashboard_manager.get_channels("Default")
-                success = self._send_single_item_notification(item, def_webhooks, def_channels)
-                save_backup("post", "Dual Stake", item.code, f"value={item.amount_value} wager={item.wager_requirement}")
-                for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
-                    success = self._send_subscriber_notification(us_item, sub_uid) or success
-                    success = self._send_subscriber_notification(com_item, sub_uid) or success
-                return success
+                s_def = self._send_single_item_notification(item, def_webhooks, def_channels)
+                success = success or s_def
 
-            success = False
-            # 1. Send single combined dual card to shared destinations (never duplicate post to same channel)
-            if shared_webhooks or shared_channels:
-                s_shared = self._send_single_item_notification(item, shared_webhooks, shared_channels)
-                success = success or s_shared
-
-            # 2. Send Stake.us card only to exclusive Stake.us destinations
-            if exclusive_us_webhooks or exclusive_us_channels:
-                s_us = self._send_single_item_notification(us_item, exclusive_us_webhooks, exclusive_us_channels)
-                success = success or s_us
-
-            # 3. Send Stake.com card only to exclusive Stake.com destinations
-            if exclusive_com_webhooks or exclusive_com_channels:
-                s_com = self._send_single_item_notification(com_item, exclusive_com_webhooks, exclusive_com_channels)
-                success = success or s_com
-
+            save_backup("post", "Dual Stake", item.code, f"value={item.amount_value} wager={item.wager_requirement}")
             for sub_uid in self.dashboard_manager.get_all_subscriber_ids():
-                success = self._send_subscriber_notification(us_item, sub_uid) or success
-                success = self._send_subscriber_notification(com_item, sub_uid) or success
+                success = self._send_subscriber_notification(item, sub_uid) or success
             return success
 
         # Standard single platform dispatch
@@ -312,7 +326,7 @@ class DiscordNotifier:
 
         return success
 
-    def _dispatch_to_channel(self, channel_id: int, embed_dict: Dict[str, Any], item: BonusCodeItem):
+    def _dispatch_to_channel(self, channel_id: int, embed_dict: Dict[str, Any], item: BonusCodeItem, components: Optional[List[Dict[str, Any]]] = None):
         """
         Safely dispatches an embed to a Discord text channel using client cache or API fetch.
         Handles both thread-pool execution and event loop coroutine scheduling.
@@ -347,12 +361,24 @@ class DiscordNotifier:
                     view = None
                     try:
                         view = discord.ui.View(timeout=None)
-                        for label, url in self._link_button_definitions(item):
-                            view.add_item(discord.ui.Button(
-                                label=label,
-                                style=discord.ButtonStyle.link,
-                                url=url,
-                            ))
+                        if components:
+                            for component in components:
+                                if component.get("type") == 1:
+                                    for btn_comp in component.get("components", []):
+                                        if btn_comp.get("type") == 2:
+                                            view.add_item(discord.ui.Button(
+                                                label=btn_comp.get("label"),
+                                                style=discord.ButtonStyle.link,
+                                                url=btn_comp.get("url"),
+                                            ))
+                        else:
+                            # Fallback to old method
+                            for label, url in self._link_button_definitions(item):
+                                view.add_item(discord.ui.Button(
+                                    label=label,
+                                    style=discord.ButtonStyle.link,
+                                    url=url,
+                                ))
                     except Exception as ve:
                         logger.warning(f"Failed to build interactive view: {ve}")
 
@@ -360,7 +386,7 @@ class DiscordNotifier:
                         channel.send(content=role_tag or None, embed=embed, view=view),
                         timeout=5.0
                     )
-                    logger.info(f"✅ Dispatched {item.platform.value} drop '{item.code}' to direct channel #{getattr(channel, 'name', channel_id)} ({channel_id})")
+                    logger.info(f"Dispatched {item.platform.value} drop '{item.code}' to direct channel #{getattr(channel, 'name', channel_id)} ({channel_id})")
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout sending to channel {channel_id}, skipping")
             except Exception as exc:
