@@ -37,10 +37,10 @@ PUBLIC_APPLICATION_COMMANDS = frozenset({
 })
 ADMIN_APPLICATION_COMMANDS = frozenset({
     "admin", "code", "embed-editor", "post", "startmonitor", "status",
-    "codechecker",
+    "codechecker", "broadcast_channel",
 })
 PUBLIC_PREFIX_COMMANDS = frozenset({"activecodesall", "dashboard", "help", "info"})
-ADMIN_PREFIX_COMMANDS = frozenset({"admin", "code", "post", "startmonitor", "status", "codechecker"})
+ADMIN_PREFIX_COMMANDS = frozenset({"admin", "code", "post", "startmonitor", "status", "codechecker", "broadcast_channel"})
 
 
 def prune_unused_commands(bot: commands.Bot) -> None:
@@ -1527,7 +1527,6 @@ class DashboardView(discord.ui.View):
         
         # Essential action buttons (row 4, remaining 2 slots)
         if not subscriber_uid or manager.is_owner(str(subscriber_uid)):
-            self.add_item(QuickActionButton(label="📝 Submitted Codes", custom_id="action_submitted_codes", style=discord.ButtonStyle.secondary, row=4))
             self.add_item(QuickActionButton(label="🔄 Toggle Monitor", custom_id="action_toggle_monitor", style=discord.ButtonStyle.success, row=4))
             self.add_item(QuickActionButton(label="📡 Add Source", custom_id="action_add_source", style=discord.ButtonStyle.primary, row=4))
         else:
@@ -2811,6 +2810,7 @@ def run_discord_bot():
                 "• `/dashboard` — Full interactive multi-platform control panel.\n"
                 "• `/code` or `!code` — Validate and broadcast a bonus code to authorized routes.\n"
                 "• `/post` or `!post` — Manually broadcast a raw event/post to selected platform channels.\n"
+                "• `/broadcast_channel <channel_id>` — Set a global broadcast channel for all events (admin).\n"
                 "• `/embed-editor` — View and edit embed formats for each platform."
             ),
             inline=False
@@ -2904,6 +2904,31 @@ def run_discord_bot():
         if not background_monitoring_sweep.is_running():
             background_monitoring_sweep.start()
         await ctx.send("🟢 Real-time bonus code monitoring has been **STARTED**.")
+
+    @bot.hybrid_command(name="broadcast_channel", with_app_command=True, description="Set a global broadcast channel ID to receive all bonus events across all platforms")
+    async def cmd_broadcast_channel(ctx: commands.Context, channel_id: str):
+        """
+        Admin command: Set a global broadcast channel that receives ALL bonus events
+        across every platform. The channel is added to the 'Default' platform route,
+        which acts as a fallback for any platform without its own dedicated channels.
+        """
+        if not manager.is_authorized(ctx.author.id) and not _has_admin_access(ctx.author):
+            embed = create_unauthorized_embed()
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+        raw_val = channel_id.strip().replace("<#", "").replace(">", "")
+        try:
+            cid = int(raw_val)
+        except ValueError:
+            await ctx.send("❌ Please provide a valid integer channel ID.", ephemeral=True)
+            return
+        manager.add_channel("Default", cid, "Global Broadcast Channel")
+        await ctx.send(
+            f"✅ Global broadcast channel set: <#{cid}>\n"
+            f"All bonus events will now be sent to this channel across all platforms "
+            f"(as the Default route fallback).",
+            ephemeral=False
+        )
 
     # ----------------------------------------------------
     # On-Demand Code Polling & Scan Commands (Consolidated)

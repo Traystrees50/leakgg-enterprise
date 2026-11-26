@@ -3094,7 +3094,7 @@ Period: July 4 → July 11"""
 
         mock_client = MagicMock(spec=OCRClient)
         mock_client.is_available = True
-        mock_client.ocr_code = MagicMock(return_value="REALCODE123")
+        mock_client.ocr_image_two_pass = MagicMock(return_value="GOATED FLASH CODE ALERT\n$5 USDC DROP\nCODE: REALCODE123\nFIRST 200 CLAIMS")
 
         item = BonusCodeItem(
             code="CHECK_IMAGE_FOR_CODE_#49",
@@ -3109,7 +3109,7 @@ Period: July 4 → July 11"""
 
         resolved = resolve_placeholder_code(item, ocr_client=mock_client)
         self.assertEqual(resolved.code, "REALCODE123")
-        mock_client.ocr_code.assert_called_once_with("https://cdn4.telesco.pe/file/pHHR6Eb.jpg")
+        mock_client.ocr_image_two_pass.assert_called_once_with(image_url="https://cdn4.telesco.pe/file/pHHR6Eb.jpg")
 
     def test_resolve_placeholder_code_preserves_when_not_placeholder(self):
         from bonus_code_detector import resolve_placeholder_code
@@ -3174,7 +3174,7 @@ Period: July 4 → July 11"""
 
         mock_client = MagicMock()
         mock_client.is_available = True
-        mock_client.ocr_code_from_bytes = MagicMock(return_value="OCRBYTECODE")
+        mock_client.ocr_image_two_pass = MagicMock(return_value="DEGEN BONUS DROP\nCODE: OCRBYTECODE\nCLAIM NOW")
 
         item = BonusCodeItem(
             code="DEGEN_DROP_#12",
@@ -3189,7 +3189,7 @@ Period: July 4 → July 11"""
 
         resolved = resolve_placeholder_code(item, ocr_client=mock_client, photo_bytes=b"fake-image-bytes")
         self.assertEqual(resolved.code, "OCRBYTECODE")
-        mock_client.ocr_code_from_bytes.assert_called_once_with(b"fake-image-bytes")
+        mock_client.ocr_image_two_pass.assert_called_once_with(image_bytes=b"fake-image-bytes")
 
     def test_telegram_scrape_channel_ocr_integration(self):
         from scrapers.telegram import TelegramScraper
@@ -3339,12 +3339,12 @@ class TestStakeCalculator(unittest.TestCase):
 
         self.assertEqual(
             registered_application_command_names(bot),
-            {"activecodes", "activecodescom", "activecodesall", "activeus", "help", "admin", "tools", "vip", "codechecker"},
+            {"activecodesall", "help", "admin", "tools", "codechecker"},
         )
-        self.assertIsNotNone(bot.get_command("activecodes"))
-        self.assertIsNotNone(bot.get_command("activeus"))
-        self.assertIsNotNone(bot.get_command("activecodescom"))
         self.assertIsNotNone(bot.get_command("activecodesall"))
+        self.assertIsNone(bot.get_command("activecodes"))
+        self.assertIsNone(bot.get_command("activeus"))
+        self.assertIsNone(bot.get_command("activecodescom"))
         self.assertIsNone(bot.get_command("guide"))
         self.assertIsNotNone(bot.get_command("admin").get_command("grant"))
         tools_command = bot.tree.get_command("tools")

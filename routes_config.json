@@ -146,6 +146,27 @@
         ],
         "Shuffle.com": [
           1575389321815527506
+        ],
+        "WINNA": [
+          1575388708545364057
+        ],
+        "THRILL": [
+          1575388708545364057
+        ],
+        "Goated": [
+          1575388708545364057
+        ],
+        "Rainbet.us": [
+          1575388708545364057
+        ],
+        "Rainbet": [
+          1575388708545364057
+        ],
+        "Stake.us & Stake.com": [
+          1575388708545364057
+        ],
+        "Razed": [
+          1575388708545364057
         ]
       },
       "webhooks": {
@@ -172,6 +193,27 @@
         },
         "Shuffle.com": {
           "1575389321815527506": "tmt shuffle-code-drops"
+        },
+        "WINNA": {
+          "1575388708545364057": "winnna tmt"
+        },
+        "THRILL": {
+          "1575388708545364057": "thrill tmt"
+        },
+        "Goated": {
+          "1575388708545364057": "goated tmt"
+        },
+        "Rainbet.us": {
+          "1575388708545364057": "rainbet.us   tmt"
+        },
+        "Rainbet": {
+          "1575388708545364057": "rainbet.com tmt"
+        },
+        "Stake.us & Stake.com": {
+          "1575388708545364057": "stake tmt"
+        },
+        "Razed": {
+          "1575388708545364057": "shuffle = razed"
         }
       },
       "webhook_labels": {
