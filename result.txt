@@ -1,0 +1,21 @@
+  [PASS] case 1: code='SPIKEUS3Lz7N4q1'         expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 2: code='CHAMP8K4L9201'           expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 3: code='CHAMP6Y2N8140'           expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+  [PASS] case 4: code='BILJ3Z3WKF'              expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 5: code='ThanksgivingGold'        expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+  [PASS] case 6: code='ESBCOM158ELITERUSH6'     expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+  [PASS] case 7: code='ESBUS158ELITERUSH6'      expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 8-Shuffle.us: code='ABCD1234'                expected=None                           got=None
+  [PASS] case 9-Shuffle.com: code='XYZ9876'                 expected=None                           got=None
+  [PASS] case 10-Rainbet: code='MFQP3DSN'                expected=None                           got=None
+  [PASS] case 11-Degen: code='DEGEN123'                expected=None                           got=None
+  [PASS] case 12-Qzino: code='QZ12345'                 expected=None                           got=None
+  [PASS] case 13-kw-us: code='RANDOMCODE'              expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 14-kw-com: code='RANDOMCODE'              expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+  [PASS] case 15-dual: code='DUALCODE'                expected=None                           got=None
+  [PASS] case 16-VegasInsider: code='VEGASCODE'               expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 17-Deadspin: code='DEADSPINCODE'            expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 18-ESBCOM-prefix: code='ESBCOM999XYZ'            expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+  [PASS] case 19-ESBUS-prefix: code='ESBUS999XYZ'             expected=Platform.STAKE_US              got=Platform.STAKE_US
+  [PASS] case 20-CHAMP-default: code='CHAMPABCD1234'           expected=Platform.STAKE_COM             got=Platform.STAKE_COM
+Results: 20 passed, 0 failed / 20 total

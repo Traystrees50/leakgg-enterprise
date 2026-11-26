@@ -21,7 +21,8 @@
       1530811649915752568
     ],
     "Qzino": [
-      1534352044868243650
+      1534352044868243650,
+      1530817346820771852
     ],
     "Rainbet": [
       1528970572392955936,
@@ -37,7 +38,9 @@
       1460666123484794880
     ],
     "THRILL": [
-      1549154901035319367
+      1549154901035319367,
+      1460666123484794880,
+      1574666183138082898
     ],
     "Stake.us - VIP Notices": [
       1528922253499170876,
@@ -48,6 +51,10 @@
     ],
     "GAMBA": [
       1460666123484794880
+    ],
+    "Goated": [
+      1531505758896656384,
+      1534350074082230375
     ]
   },
   "webhooks": {
@@ -61,6 +68,21 @@
     "channels": {
       "GAMBA": {
         "1460666123484794880": "testing stb"
+      },
+      "WINNA": {
+        "1460666123484794880": "leaked.gg testing channel"
+      },
+      "THRILL": {
+        "1460666123484794880": "leaked.gg testing",
+        "1574666183138082898": "LEAKED.GG  THRILL CHANNEL",
+        "1549154901035319367": "SMOKERZ SEKTION ( THRILL CHANNEL)"
+      },
+      "Goated": {
+        "1531505758896656384": "LEAKED.GG GOATED CHANNEL",
+        "1534350074082230375": "Smokerz Sektion ( GOATED )"
+      },
+      "Qzino": {
+        "1530817346820771852": "LEAKED.GG QZINO CHANNEL"
       }
     },
     "webhooks": {}
@@ -115,6 +137,61 @@
     "1058105702603837631": {
       "channels": {},
       "webhooks": {},
+      "guild_id": null
+    },
+    "1080842038523740170": {
+      "channels": {
+        "Shuffle.us": [
+          1575389321815527506
+        ],
+        "Shuffle.com": [
+          1575389321815527506
+        ]
+      },
+      "webhooks": {
+        "Stake.us": [
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz"
+        ],
+        "Stake.com": [
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz"
+        ],
+        "Stake.us - VIP Notices": [
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz"
+        ],
+        "Stake.com - VIP Notices": [
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz"
+        ],
+        "Stake.us & Stake.com": [
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz",
+          "https://discord.com/api/webhooks/1575390199184105502/N2id_soJ4UBmylNcmazKkfMF4vTz9i0mgHtnM5DpefxZJ75NejP2PNHjM3SpBvNFmRTF"
+        ]
+      },
+      "channel_labels": {
+        "Shuffle.us": {
+          "1575389321815527506": "tmt - shuffle-code-drops"
+        },
+        "Shuffle.com": {
+          "1575389321815527506": "tmt shuffle-code-drops"
+        }
+      },
+      "webhook_labels": {
+        "Stake.us": {
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz": "The Money Tree ( STAKE DROP-CODES)"
+        },
+        "Stake.com": {
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz": "The Money Tree ( STAKE DROP-CODES)"
+        },
+        "Stake.us - VIP Notices": {
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz": "The Money Tree ( STAKE DROP-CODES)"
+        },
+        "Stake.com - VIP Notices": {
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz": "The Money Tree ( STAKE DROP-CODES)"
+        },
+        "Stake.us & Stake.com": {
+          "https://discord.com/api/webhooks/1575358691861856346/tztsPfhPaxXhMQkE_5LusSRcOx2F2lozlVFyQmiU8shk5AASSibk7_vCvZEteW3YOovz": "The Money Tree ( STAKE DROP-CODES)",
+          "https://discord.com/api/webhooks/1575390199184105502/N2id_soJ4UBmylNcmazKkfMF4vTz9i0mgHtnM5DpefxZJ75NejP2PNHjM3SpBvNFmRTF": "TMT - stake-code-drops"
+        }
+      },
       "guild_id": null
     }
   }

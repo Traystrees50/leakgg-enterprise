@@ -1526,6 +1526,7 @@ class DashboardView(discord.ui.View):
         if not subscriber_uid or manager.is_owner(str(subscriber_uid)):
             self.add_item(QuickActionButton(label="📝 Submitted Codes", custom_id="action_submitted_codes", style=discord.ButtonStyle.secondary, row=4))
             self.add_item(QuickActionButton(label="🔄 Toggle Monitor", custom_id="action_toggle_monitor", style=discord.ButtonStyle.success, row=4))
+            self.add_item(QuickActionButton(label="📡 Add Source", custom_id="action_add_source", style=discord.ButtonStyle.primary, row=4))
         else:
             self.add_item(QuickActionButton(label="📍 My Routes", custom_id="action_my_routes", style=discord.ButtonStyle.primary, row=4))
             self.add_item(QuickActionButton(label="🔔 Notifications", custom_id="action_notifications", style=discord.ButtonStyle.secondary, row=4))
@@ -1872,6 +1873,14 @@ class QuickActionButton(discord.ui.Button):
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_submitted_codes":
             modal = SubmittedCodesRoutingModal(view.manager, view, view.subscriber_uid)
+            await interaction.response.send_modal(modal)
+        elif self.custom_id == "action_add_source":
+            modal = AddSourceModal(
+                view.manager,
+                view,
+                view.selected_platforms[0] if view.selected_platforms else None,
+                subscriber_uid=view.subscriber_uid
+            )
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_my_routes":
             embed = create_sources_embed(view.manager)

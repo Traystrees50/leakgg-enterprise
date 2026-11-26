@@ -1,0 +1,24 @@
+
+=== Part 1a: Stake.us historical drops ===
+
+=== Part 1b: Stake.com historical drops ===
+
+=== Part 2: Zero Shuffle misclassifications for Stake codes ===
+
+=== Part 3: All 13 platforms route to correct platform_id ===
+
+=== Part 4: Claim URLs ===
+
+=== Part 5: OCR banner extraction (simulated) ===
+
+=== Part 6: Placeholder suppression ===
+
+=== Part 7: source_history.json auto-learning ===
+
+=== Part 8: Non-regression for existing platforms ===
+
+=== Part 9: Dual-stake detection ===
+
+============================================================
+  Results: 116 passed, 0 failed / 116 total
+============================================================

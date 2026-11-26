@@ -15,6 +15,27 @@ logger = logging.getLogger(__name__)
 # Backup tracking file
 BACKUP_FILE = "posts_backup.json"
 
+# Official platform logo thumbnails for Discord embeds
+# Using publicly hosted CDN images for each platform
+PLATFORM_LOGOS: Dict[str, str] = {
+    "Stake.com":               "https://stake.com/favicon.ico",
+    "Stake.us":                "https://stake.us/favicon.ico",
+    "Stake.com - VIP Notices": "https://stake.com/favicon.ico",
+    "Stake.us - VIP Notices":  "https://stake.us/favicon.ico",
+    "Shuffle.com":             "https://shuffle.com/favicon.ico",
+    "Shuffle.us":              "https://shuffle.us/favicon.ico",
+    "Stake.us & Stake.com":    "https://stake.com/favicon.ico",
+    "Rainbet":                 "https://rainbet.com/favicon.ico",
+    "Rainbet.us":              "https://rainbet.com/favicon.ico",
+    "Qzino":                   "https://qzino.ai/favicon.ico",
+    "Degen":                   "https://degen.com/favicon.ico",
+    "Goated":                  "https://goated.com/favicon.ico",
+    "THRILL":                  "https://thrill.com/favicon.ico",
+    "WINNA":                   "https://winna.com/favicon.ico",
+    "GAMBA":                   "https://gamba.com/favicon.ico",
+    "Razed":                   "https://razed.com/favicon.ico",
+}
+
 
 def save_backup(action: str, platform: str, code: str, details: str = "") -> bool:
     """
@@ -159,8 +180,14 @@ class DiscordNotifier:
             "footer": {"text": "We Value Responsible Gaming - Leaked.gg"},
         }
 
+        # Attach event media/image (always shown when present — required for Degen, Qzino, etc.)
         if item.image_url:
             embed["image"] = {"url": item.image_url}
+
+        # Platform logo thumbnail (shown in top-right corner of every embed)
+        logo_url = PLATFORM_LOGOS.get(item.platform.value)
+        if logo_url:
+            embed["thumbnail"] = {"url": logo_url}
 
         return embed
 
@@ -192,7 +219,7 @@ class DiscordNotifier:
         role_tag = item.platform.role_tag
         
         success = False
-        # 1. Dispatch via Webhook(s) - each webhook gets its own components (for KICK button logic)
+        # 1. Dispatch via Webhook(s)
         for wh in list(dict.fromkeys([w for w in target_webhooks if w])):
             webhook_payload = {
                 "embeds": [embed_dict],
@@ -201,12 +228,25 @@ class DiscordNotifier:
             if role_tag and item.platform != Platform.RAINBET:
                 webhook_payload["content"] = role_tag
             try:
-                resp = requests.post(
-                    wh,
-                    data=json.dumps(webhook_payload),
-                    headers={"Content-Type": "application/json"},
-                    timeout=10
-                )
+                # If we have raw image bytes (private Telegram media), send as multipart
+                if item.image_bytes and not item.image_url:
+                    import io
+                    payload_json = json.dumps({
+                        "payload_json": json.dumps(webhook_payload)
+                    })
+                    resp = requests.post(
+                        wh,
+                        data={"payload_json": json.dumps(webhook_payload)},
+                        files={"file": ("media.jpg", io.BytesIO(item.image_bytes), "image/jpeg")},
+                        timeout=15
+                    )
+                else:
+                    resp = requests.post(
+                        wh,
+                        data=json.dumps(webhook_payload),
+                        headers={"Content-Type": "application/json"},
+                        timeout=10
+                    )
                 if resp.status_code in [200, 204]:
                     logger.info(f"Successfully dispatched Discord embed for {item.platform.value} code '{item.code}' to webhook: {wh[:35]}...")
                     success = True

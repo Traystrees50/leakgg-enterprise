@@ -661,6 +661,8 @@ class TelegramScraper:
         # Route to specialized parsers where they exist
         if platform == Platform.RAINBET:
             return self.parse_rainbet_message(text, msg_url, image_url, event_datetime, channel_name="faircodes")
+        if platform == Platform.RAINBET_US:
+            return self.parse_generic_platform_message(text, msg_url, Platform.RAINBET_US, image_url, event_datetime, channel_name="faircodes")
         if platform == Platform.DEGEN:
             return self.parse_degen_message(text, msg_url, image_url, event_datetime)
         if platform == Platform.QZINO:
@@ -669,6 +671,10 @@ class TelegramScraper:
             return self.parse_winna_message(text, msg_url, image_url, event_datetime)
         if platform == Platform.THRILL:
             return self.parse_thrill_message(text, msg_url, image_url, event_datetime)
+        if platform == Platform.GAMBA:
+            return self.parse_generic_platform_message(text, msg_url, Platform.GAMBA, image_url, event_datetime, channel_name="faircodes")
+        if platform == Platform.RAZED:
+            return self.parse_generic_platform_message(text, msg_url, Platform.RAZED, image_url, event_datetime, channel_name="faircodes")
         if platform in (
             Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE,
             Platform.STAKE_US_VIP_NOTICES, Platform.STAKE_COM_VIP_NOTICES,
@@ -1101,6 +1107,50 @@ class TelegramScraper:
 
     # ==================== NEW PLATFORM PARSERS ====================
 
+    def parse_generic_platform_message(self, text: str, msg_url: str, platform: "Platform", image_url: Optional[str] = None, event_datetime: Optional[Any] = None, channel_name: str = "unknown") -> Optional[BonusCodeItem]:
+        """
+        Generic parser for platforms with standard drop format (Razed, Gamba, Rainbet.us, etc.).
+        Extracts code, value, wager, claims using shared regex patterns.
+        """
+        msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
+        code_m = _RE_CODE_RAINBET.search(text) or _RE_CODE_GENERIC.search(text)
+        if not code_m:
+            code_m = re.search(r"(?:^|\n)\s*([A-Z0-9]{5,20})\s*(?:\n|$)", text)
+        if not code_m:
+            if image_url:
+                code = f"CHECK_IMAGE_FOR_CODE_#{msg_id}"
+            else:
+                return None
+        else:
+            code = code_m.group(1).strip()
+            stopwords = {"BONUS", "DROP", "HERE", "REDEEM", "CLICK", "CODE", "JUST", "COPY",
+                         "THE", "AND", "FOR", "YOUR", "THIS", "WITH", "FROM", "GET", "USE",
+                         "NOW", "NEW", "FREE", "PLAY", "WIN", "CLAIM", "LINK"}
+            if code.upper() in stopwords or len(code) < 4:
+                return None
+
+        val_m = _RE_VALUE_GENERIC.search(text)
+        val = val_m.group(1).strip() if val_m else f"{platform.value} Bonus Drop"
+        wager_m = _RE_WAGER_GENERIC.search(text)
+        wager = wager_m.group(1).strip() if wager_m else "Not specified"
+        claims_m = _RE_CLAIMS_GENERIC.search(text)
+        claims = claims_m.group(1).strip() if claims_m else None
+
+        return BonusCodeItem(
+            code=code,
+            platform=platform,
+            amount_value=val,
+            wager_requirement=wager,
+            claims_count=claims,
+            source_url=msg_url,
+            source_name=f"@{channel_name}",
+            is_affiliate=False,
+            image_url=image_url,
+            custom_redeem_link=platform.redeem_link if hasattr(platform, 'redeem_link') else None,
+            event_datetime=event_datetime,
+            description=strip_promo_footer(text[:400])
+        )
+
     def parse_goated_message(self, text: str, msg_url: str, image_url: Optional[str] = None, event_datetime: Optional[Any] = None) -> Optional[BonusCodeItem]:
         """Parse Goated.com bonus drops"""
         msg_id = msg_url.split("/")[-1] if "/" in msg_url else "drop"
@@ -1189,7 +1239,7 @@ class TelegramScraper:
         t_upper = normalized_text.upper()
         msg_id = msg_url.split("/")[-1] if "/" in msg_url else "event"
 
-        if "WEEKLY BOOST" in t_upper or "WEEKLY BONUS" in t_upper or "MONTHLY BONUS" in t_upper or "VIP EVENT" in t_upper or "VIP NOTICE" in t_upper:
+        if "WEEKLY BOOST" in t_upper or "WEEKLY BONUS" in t_upper or "MONTHLY BONUS" in t_upper or "VIP EVENT" in t_upper or "VIP NOTICE" in t_upper or "PRE MONTHLY" in t_upper or "PRE-MONTHLY" in t_upper or "POST MONTHLY" in t_upper or "POST-MONTHLY" in t_upper or "RAKEBACK" in t_upper or "LEVEL UP" in t_upper or "LEVEL-UP" in t_upper:
             is_us = (
                 "1542279201" in channel_name or
                 "1542279201" in msg_url or
@@ -1222,7 +1272,11 @@ class TelegramScraper:
                 ev_type = "weekly_bonus"
                 code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_WEEKLY_BOOST_#{msg_id}"
                 amount = "VIP Weekly Boost Claim Link"
-            elif "POST MONTHLY" in t_upper:
+            elif "PRE MONTHLY" in t_upper or "PRE-MONTHLY" in t_upper:
+                ev_type = "pre_monthly_bonus"
+                code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_PRE_MONTHLY_BONUS_#{msg_id}"
+                amount = "Pre Monthly Bonus Claim Link"
+            elif "POST MONTHLY" in t_upper or "POST-MONTHLY" in t_upper:
                 ev_type = "post_monthly_bonus"
                 code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_POST_MONTHLY_BONUS_#{msg_id}"
                 amount = "Post Monthly Bonus Claim Link"
@@ -1230,6 +1284,14 @@ class TelegramScraper:
                 ev_type = "monthly_bonus"
                 code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_MONTHLY_BONUS_#{msg_id}"
                 amount = "VIP Monthly Bonus Claim Link"
+            elif "RAKEBACK" in t_upper:
+                ev_type = "rakeback"
+                code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_RAKEBACK_#{msg_id}"
+                amount = "VIP Rakeback Claim Link"
+            elif "LEVEL UP" in t_upper or "LEVEL-UP" in t_upper:
+                ev_type = "level_up"
+                code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_LEVEL_UP_#{msg_id}"
+                amount = "VIP Level Up Bonus"
             else:
                 ev_type = "vip_notice"
                 code_name = f"STAKE_{'US' if plat == Platform.STAKE_US_VIP_NOTICES else 'COM'}_VIP_NOTICE_#{msg_id}"
@@ -1411,6 +1473,12 @@ class TelegramScraper:
                 item = self.parse_qzino_message(msg_text, msg_url, img_url, event_datetime=msg_dt, channel_name=clean_name)
             elif "goated" in clean_name.lower():
                 item = self.parse_goated_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
+            elif "razed" in clean_name.lower():
+                item = self.parse_generic_platform_message(msg_text, msg_url, Platform.RAZED, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "rainbetus" in clean_name.lower() or "rainbet_us" in clean_name.lower() or ("rainbet" in clean_name.lower() and "us" in clean_name.lower()):
+                item = self.parse_generic_platform_message(msg_text, msg_url, Platform.RAINBET_US, img_url, event_datetime=msg_dt, channel_name=clean_name)
+            elif "gamba" in clean_name.lower():
+                item = self.parse_generic_platform_message(msg_text, msg_url, Platform.GAMBA, img_url, event_datetime=msg_dt, channel_name=clean_name)
             elif "pulsz" in clean_name.lower():
                 item = self.parse_pulsz_message(msg_text, msg_url, img_url, event_datetime=msg_dt)
             elif "modo" in clean_name.lower():
@@ -1554,15 +1622,23 @@ class TelegramScraper:
     async def _async_scrape_private_channel(self, chat_id: str) -> List[BonusCodeItem]:
         """
         Async implementation of private channel scraping.
+        Passes invite_hash from TELEGRAM_PRIVATE_SOURCES so Telethon can
+        join the channel on first access if needed.
         """
         items: List[BonusCodeItem] = []
         chat_id_int = int(chat_id)
         meta = TELEGRAM_PRIVATE_SOURCES.get(chat_id, {})
         label = meta.get("label", chat_id)
         ref_msg_id = meta.get("reference_msg_id")
+        invite_hash = meta.get("invite_hash")  # e.g. "f7gWYIe0IyoyNzY1"
         source_url = meta.get("source_url", f"https://t.me/c/{chat_id.lstrip('-')}/{ref_msg_id or ''}").rstrip("/")
 
-        messages = await self.telegram_api_client.fetch_messages(chat_id_int, limit=50, offset_id=ref_msg_id)
+        messages = await self.telegram_api_client.fetch_messages(
+            chat_id_int,
+            limit=50,
+            offset_id=ref_msg_id,
+            invite_hash=invite_hash,
+        )
         if not messages:
             logger.debug(f"No messages fetched from private Telegram chat {chat_id}")
             return items
@@ -1582,9 +1658,10 @@ class TelegramScraper:
 
             # Determine channel label for parser routing
             ch_name = label.lower()
-            if "stake.com" in ch_name or "stakecom" in ch_name or "com vip" in ch_name:
+            platform_hint = meta.get("platform", "")  # e.g. "stake_com_vip", "stake_us_vip"
+            if platform_hint == "stake_com_vip" or "stake.com" in ch_name or "stakecom" in ch_name or "com vip" in ch_name:
                 ch_name_for_parser = "highrollerscode"
-            elif "stake.us" in ch_name or "stakeus" in ch_name or "us vip" in ch_name:
+            elif platform_hint == "stake_us_vip" or "stake.us" in ch_name or "stakeus" in ch_name or "us vip" in ch_name:
                 ch_name_for_parser = "highrollerscodeus"
             else:
                 ch_name_for_parser = label
@@ -1610,10 +1687,18 @@ class TelegramScraper:
                 is_valid, val_reason = is_valid_affiliate_code(item, max_days=MAX_EVENT_AGE_DAYS)
                 if is_valid or not item.is_affiliate:
                     photo_bytes = None
-                    if resolve_placeholder_code is not None and should_ocr_code and should_ocr_code(item.code):
+                    # Download media bytes if: OCR needed OR no image_url but media exists
+                    has_media = msg.get("has_photo") or msg.get("has_video") or msg.get("media")
+                    needs_download = (
+                        (resolve_placeholder_code is not None and should_ocr_code and should_ocr_code(item.code))
+                        or (has_media and not item.image_url)
+                    )
+                    if needs_download:
                         photo_bytes = await self.telegram_api_client.download_message_media(
                             int(chat_id), int(msg.get("id", 0))
                         )
+                    if photo_bytes and not item.image_url:
+                        item.image_bytes = photo_bytes
                     if resolve_placeholder_code is not None:
                         item = resolve_placeholder_code(item, photo_bytes=photo_bytes)
                     is_rec, rec_reason = is_event_recent(dt=item.event_datetime, max_days=MAX_EVENT_AGE_DAYS, text=item.description)

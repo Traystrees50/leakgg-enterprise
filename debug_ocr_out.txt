@@ -1,0 +1,16 @@
+labeled match: <re.Match object; span=(13, 23), match='CODE ALERT'>
+group(1): 'ALERT'
+normalized: 'ALERT'
+in stopwords: True
+len: 5
+wager match: <re.Match object; span=(37, 66), match='$5,000 WAGERED IN LAST 7 DAYS'>
+wager group(1): '5,000'
+wager group(2): '7 DAYS'
+details: {'code': 'FIRST200CLAIMS', 'amount': '$5', 'wager': '$5,000 wagered in the last 7 DAYS'}
+
+--- Line analysis ---
+  line='GOATEDFLASHCODEALERT'         mixed=False upper=True in_stop=False
+  line='$5USDCDROP'                   mixed=False upper=False in_stop=False
+  line='$5,000WAGEREDINLAST7DAYS'     mixed=False upper=False in_stop=False
+  line='CODE: GOAT8842X'              mixed=False upper=False in_stop=False
+  line='FIRST200CLAIMS'               mixed=True upper=True in_stop=False

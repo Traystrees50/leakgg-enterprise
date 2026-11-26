@@ -128,14 +128,16 @@ TELEGRAM_CHANNELS = {
     "stake_us": ["highrollerscodeUS", "dailybonuscodeUS", "codestats2", "stakeusdrops", "stakeusbonus", "stakecodesus"],
     "stake_com": ["highrollerscode", "dailybonuscodes", "codestats2", "stakecomdrops", "stakecombonus", "stakecodescom"],
     "degen": ["degendotcom", "degencodes", "degendrops", "degenbonus"],
-    "rainbet": ["EddiesCodesRainbet", "rainbetcodes", "rainbetdrops", "rainbetbonus"],
-    "winna": ["EddiesCodesWinna", "winnacodes", "winnadrops", "winnabonus"],
-    "gamba": ["faircodes", "gambacodes", "gambadrops"],
+    "rainbet": ["EddiesCodesRainbet", "rainbetcodes", "rainbetdrops", "rainbetbonus", "rainbetofficial"],
+    "rainbet_us": ["rainbetus", "rainbetuscodes", "rainbetusdrops"],
+    "winna": ["EddiesCodesWinna", "winnacodes", "winnadrops", "winnabonus", "winnaofficial"],
+    "gamba": ["faircodes", "gambacodes", "gambadrops", "gambaofficial"],
     "shuffle": ["anyclaimershuffle", "codestats2", "shufflecodes", "shuffledrops", "shuffleuscodes"],
-    "thrill": ["thrillcodes", "thrilldrops", "thrillbonus"],
+    "thrill": ["thrillcodes", "thrilldrops", "thrillbonus", "thrillofficial"],
     "qzino": ["qzino_code", "qzino", "qzinodotai", "qzinocodes", "qzinodrops"],
     "codestats": ["codestats2", "codestatsgg"],
-    "goated": ["goatedcodes", "goateddrops", "goatedbonus"],
+    "goated": ["goatedcodes", "goateddrops", "goatedbonus", "goatedofficial"],
+    "razed": ["razedcodes", "razeddrops", "razedbonus", "razedofficial"],
     "eddiescodes": ["EddiesCodesRainbet", "EddiesCodesWinna", "EddiesCodesShuffle", "EddiesCodesDegen", "EddiesCodesQzino", "EddiesCodesThill"],
     "codezgg": ["codezgg", "codezggcodes", "codezggdrops"],
     "stakecodeclaimer": ["stakecodeclaimer", "stakeclaimer"],
@@ -146,17 +148,22 @@ TELEGRAM_CHANNELS = {
 
 # Telegram Private Group/Channel Sources
 # These are private Telegram sources identified by chat ID.
-# Reference message IDs are used for discovery metadata.
+# invite_hash: the hash portion of a t.me/+ invite link (used to join once via Telethon).
+# After joining, Telethon resolves the real chat_id automatically.
 TELEGRAM_PRIVATE_SOURCES = {
     "-2922581483": {
         "reference_msg_id": 61,
         "label": "Stake.com VIP Notices",
         "source_url": "https://t.me/c/2922581483/61",
+        "invite_hash": "f7gWYIe0IyoyNzY1",
+        "platform": "stake_com_vip",
     },
     "-1542279201": {
         "reference_msg_id": 257,
         "label": "Stake.us VIP Notices",
         "source_url": "https://t.me/c/1542279201/257",
+        "invite_hash": "bzGuVC4YkKFlYmFl",
+        "platform": "stake_us_vip",
     },
 }
 

@@ -179,6 +179,7 @@ class BonusCodeItem:
     custom_redeem_link_us: Optional[str] = None
     custom_redeem_link_com: Optional[str] = None
     image_url: Optional[str] = None
+    image_bytes: Optional[bytes] = None  # raw media bytes from private Telegram channels
     event_type: Optional[str] = "DROP"  # "DROP", "WEEKLY BOOST", "MONTHLY BONUS", "VIP EVENT", "AFFILIATE"
     description: Optional[str] = None
     event_datetime: Optional[datetime] = None
