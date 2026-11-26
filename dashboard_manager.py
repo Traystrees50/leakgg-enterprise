@@ -13,7 +13,7 @@ from config import (
     DISCORD_WEBHOOK_GAMBA,
     DISCORD_WEBHOOK_RAZED,
     DISCORD_WEBHOOK_RAINBET_US,
-    CHECK_INTERVAL_SECONDS, OWNER_USER_ID,
+    CHECK_INTERVAL_SECONDS, OWNER_USER_ID, PERMANENT_ADMIN_USER_IDS,
     TELEGRAM_CHANNELS, TARGET_SOURCES, TELEGRAM_PRIVATE_SOURCES
 )
 
@@ -149,11 +149,14 @@ class DashboardManager:
 
     def is_authorized(self, user_id: Union[int, str]) -> bool:
         """
-        Returns True if the user is the project owner OR an active authorized subscriber ($2 crypto).
+        Returns True if the user is the project owner, a permanent admin,
+        or an active authorized subscriber ($2 crypto).
         Checks expiration date for time-limited subscriptions.
         """
         uid = str(user_id).strip()
         if self.is_owner(uid):
+            return True
+        if int(uid) in PERMANENT_ADMIN_USER_IDS:
             return True
         sub_entry = self.config.get("subscribers", {}).get(uid)
         if sub_entry and sub_entry.get("active", False):
@@ -507,12 +510,20 @@ class DashboardManager:
         return sub_routes.get("guild_id")
 
     def get_all_subscriber_ids(self) -> List[str]:
-        """Returns list of all subscriber user IDs (excluding owner)."""
+        """Returns list of all subscriber user IDs (excluding owner).
+        Includes users registered in the subscribers section AND users who
+        have personal routes configured in subscriber_routes (e.g. permanent admins).
+        """
         subs = self.config.get("subscribers", {})
-        return [
-            uid for uid in subs.keys()
-            if uid != str(OWNER_USER_ID) and self.is_authorized(uid)
-        ]
+        sub_routes = self.config.get("subscriber_routes", {})
+        ids = set()
+        for uid in subs.keys():
+            if uid != str(OWNER_USER_ID) and self.is_authorized(uid):
+                ids.add(uid)
+        for uid in sub_routes.keys():
+            if uid != str(OWNER_USER_ID) and self.is_authorized(uid):
+                ids.add(uid)
+        return sorted(ids)
 
     # ----------------------------------------------------
     def get_webhooks(self, platform_input: Any) -> List[str]:
