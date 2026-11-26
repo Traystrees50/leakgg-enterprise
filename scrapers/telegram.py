@@ -1599,6 +1599,8 @@ class TelegramScraper:
                 item = self.parse_degen_message(msg_text, msg_url, image_url=msg_image_url, event_datetime=event_datetime)
             elif "qzino" in ch_name_for_parser.lower():
                 item = self.parse_qzino_message(msg_text, msg_url, image_url=msg_image_url, event_datetime=event_datetime, channel_name=label)
+            elif "goated" in ch_name_for_parser.lower():
+                item = self.parse_goated_message(msg_text, msg_url, image_url=msg_image_url, event_datetime=event_datetime)
             elif "codestats" in ch_name_for_parser.lower():
                 item = self.parse_codestats_message(msg_text, msg_url, image_url=msg_image_url, event_datetime=event_datetime)
             else:
