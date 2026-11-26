@@ -27,16 +27,19 @@ logger = logging.getLogger("LeakedGG.DiscordBot")
 logging.getLogger("discord").setLevel(logging.WARNING)
 
 PUBLIC_APPLICATION_COMMANDS = frozenset({
-    "activecodes", "activeus", "activecodescom", "activecodesall",
-    "dashboard", "help", "info", "tools", "links", "subscribe", "commands",
-    "vip", "weekly", "monthly", "vip_calc", "weekly_calc", "monthly_calc",
-    "rakeback", "set_tier", "my_tier", "convert", "dice98", "vip_tiers",
+    "activecodesall",
+    "dashboard",
+    "tools",
+    "info",
+    "help",
+    "monthly_calc",
+    "vip_calc",
 })
 ADMIN_APPLICATION_COMMANDS = frozenset({
     "admin", "code", "embed-editor", "post", "startmonitor", "status",
     "codechecker",
 })
-PUBLIC_PREFIX_COMMANDS = frozenset({"activecodes", "activeus", "activecodescom", "activecodesall", "dashboard", "help", "info"})
+PUBLIC_PREFIX_COMMANDS = frozenset({"activecodesall", "dashboard", "help", "info"})
 ADMIN_PREFIX_COMMANDS = frozenset({"admin", "code", "post", "startmonitor", "status", "codechecker"})
 
 

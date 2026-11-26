@@ -138,7 +138,6 @@ TELEGRAM_CHANNELS = {
     "codestats": ["codestats2", "codestatsgg"],
     "goated": ["goatedcodes", "goateddrops", "goatedbonus", "goatedofficial"],
     "razed": ["razedcodes", "razeddrops", "razedbonus", "razedofficial"],
-    "eddiescodes": ["EddiesCodesRainbet", "EddiesCodesWinna", "EddiesCodesShuffle", "EddiesCodesDegen", "EddiesCodesQzino", "EddiesCodesThill"],
     "codezgg": ["codezgg", "codezggcodes", "codezggdrops"],
     "stakecodeclaimer": ["stakecodeclaimer", "stakeclaimer"],
     "anytimeshuffle": ["anytimeshuffle", "anytimeshufflecodes"],

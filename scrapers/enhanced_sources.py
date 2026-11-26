@@ -13,101 +13,6 @@ from network_manager import ResilientSession
 
 logger = logging.getLogger(__name__)
 
-class EddiesCodesScraper(BaseScraper):
-    """Scraper for eddiescodes.com - covers Stake.US, Stake, Winna, Rainbet, Shuffle.us, Shuffle, Thrill"""
-    
-    BASE_URLS = {
-        Platform.STAKE_US: "https://eddiescodes.com/stake-us",
-        Platform.STAKE_COM: "https://eddiescodes.com/stake-com",
-        Platform.WINNA: "https://eddiescodes.com/winna",
-        Platform.RAINBET: "https://eddiescodes.com/rainbet",
-        Platform.SHUFFLE_US: "https://eddiescodes.com/shuffle-us",
-        Platform.SHUFFLE_COM: "https://eddiescodes.com/shuffle-com",
-        Platform.THRILL: "https://eddiescodes.com/thrill",
-    }
-    
-    def __init__(self, timeout=15):
-        super().__init__(headers=HTTP_HEADERS, timeout=timeout)
-        self.session = ResilientSession(
-            timeout=timeout,
-            enable_jitter=ENABLE_JITTER,
-            enable_proxy_rotation=ENABLE_PROXY_ROTATION
-        )
-    
-    def scrape_all(self) -> List[BonusCodeItem]:
-        all_items = []
-        for platform, url in self.BASE_URLS.items():
-            try:
-                items = self.scrape_platform(platform, url)
-                all_items.extend(items)
-            except Exception as e:
-                logger.error(f"Error scraping EddiesCodes for {platform.value}: {e}")
-        return all_items
-    
-    def scrape_platform(self, platform: Platform, url: str) -> List[BonusCodeItem]:
-        items = []
-        try:
-            html = self.session.fetch_text(url, headers=self.headers)
-            if not html:
-                return items
-            
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Look for code cards, tables, or list items
-            code_elements = soup.find_all(['div', 'tr', 'li', 'article'], 
-                class_=re.compile(r'code|drop|promo|bonus|offer', re.I))
-            
-            for elem in code_elements:
-                text = " ".join(elem.get_text().split())
-                if not text or len(text) < 10:
-                    continue
-                
-                # Extract code
-                code_match = re.search(r'(?:code|promo|drop|use)[:\s]+([A-Za-z0-9_\-]{4,30})', text, re.I)
-                if not code_match:
-                    code_match = re.search(r'\b([A-Z0-9]{6,20})\b', text)
-                
-                if not code_match:
-                    continue
-                
-                code = code_match.group(1).strip()
-                if code.upper() in STOP_WORDS:
-                    continue
-                
-                # Extract value
-                val_match = re.search(r'(?:value|reward|amount|bonus)[:\s]+(\$?\d+(?:\.\d+)?\s*(?:SC|GC|USD|\$)?)', text, re.I)
-                val = val_match.group(1).strip() if val_match else "Bonus Drop"
-                
-                # Extract wager
-                wager_match = re.search(r'(?:wager|requirement|playthrough)[:\s]+([\d,]+\s*(?:x|SC|GC|USD)?)', text, re.I)
-                wager = wager_match.group(1).strip() if wager_match else "Not specified"
-                
-                # Extract image
-                img_tag = elem.find('img')
-                image_url = img_tag.get('src') if img_tag and img_tag.get('src', '').startswith('http') else None
-                
-                item = BonusCodeItem(
-                    code=code,
-                    platform=platform,
-                    amount_value=val,
-                    wager_requirement=wager,
-                    source_url=url,
-                    source_name="EddiesCodes.com",
-                    is_affiliate=True,
-                    image_url=image_url,
-                    description=text[:300]
-                )
-                
-                is_valid, _ = is_valid_affiliate_code(item)
-                if is_valid:
-                    items.append(item)
-                    
-        except Exception as e:
-            logger.error(f"Error parsing EddiesCodes for {platform.value}: {e}")
-        
-        return items
-
-
 class CodezGGScraper(BaseScraper):
     """Scraper for codez.gg - covers Stake.US, Stake, Winna, Rainbet, Shuffle.us, Shuffle, Thrill"""
     
@@ -494,7 +399,6 @@ def scrape_all_new_sources() -> List[BonusCodeItem]:
     all_items = []
     
     scrapers = [
-        EddiesCodesScraper(),
         CodezGGScraper(),
         StakeCodeClaimerScraper(),
         AnyTimeShuffleScraper(),
