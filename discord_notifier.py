@@ -144,7 +144,15 @@ class DiscordNotifier:
             detail_lines.append(f"**Requirements:** {item.wager_requirement}")
 
         # Claim link(s) - always show
-        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
+        _is_ambiguous = getattr(item, "is_ambiguous_stake", False) or item.platform == Platform.AMBIGUOUS_STAKE
+        if _is_ambiguous:
+            # Ambiguous Stake: both links are CANDIDATES only, neither
+            # platform is verified. Never present them as a verified dual.
+            claim_line = (
+                f"[**CANDIDATE CLAIM (US)**]({item.redeem_link_us})  "
+                f"[**CANDIDATE CLAIM (COM)**]({item.redeem_link_com})"
+            )
+        elif item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
             claim_line = (
                 f"[**CLICK HERE TO CLAIM (US)**]({item.redeem_link_us})  "
                 f"[**CLICK HERE TO CLAIM (COM)**]({item.redeem_link_com})"
@@ -156,7 +164,9 @@ class DiscordNotifier:
         detail_lines.append(claim_line)
 
         # Platform field: special handling for user submitted dual stake
-        if is_user_submitted_dual:
+        if _is_ambiguous:
+            platform_display = "AMBIGUOUS STAKE (US & COM) - CANDIDATE LINKS ONLY, NOT VERIFIED"
+        elif is_user_submitted_dual:
             platform_display = "NEW USER SUBMITTED (US & COM) CODE DETECTED"
         else:
             platform_display = f"{platform_name}  NEW DROP DETECTED"
@@ -301,7 +311,11 @@ class DiscordNotifier:
         if custom_webhook:
             return self._send_single_item_notification(item, [custom_webhook], [])
 
+        _is_ambiguous = getattr(item, "is_ambiguous_stake", False) or item.platform == Platform.AMBIGUOUS_STAKE
         if subscriber_uid:
+            if _is_ambiguous:
+                # Ambiguous: send ONCE, do not split into US + COM items.
+                return self._send_subscriber_notification(item, subscriber_uid)
             if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
                 sent = False
                 sent = self._send_subscriber_notification(item.to_stake_us_item(), subscriber_uid) or sent
@@ -309,7 +323,7 @@ class DiscordNotifier:
                 return sent
             return self._send_subscriber_notification(item, subscriber_uid)
 
-        if item.is_dual_stake or item.platform == Platform.DUAL_STAKE:
+        if not _is_ambiguous and (item.is_dual_stake or item.platform == Platform.DUAL_STAKE):
             # For dual stake items: post to BOTH Stake.us AND Stake.com channels/webhooks
             # Each embed contains BOTH claim links (US and COM)
             us_webhooks = set(self.dashboard_manager.get_webhooks(Platform.STAKE_US))

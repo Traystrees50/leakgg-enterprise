@@ -32,6 +32,38 @@ class CodeTracker:
         except Exception:
             pass
 
+    def _get_code_key(self, code: str) -> str:
+        """Code-only key, case-sensitive. Dedup is by exact code string FIRST."""
+        return f"CODE:{code.strip()}"
+
+    def is_duplicate_code(self, code: str) -> bool:
+        """True if this exact code string was already seen on ANY platform.
+        This is what catches VERIFICATION FAILED re-posts in #stake-codes
+        (same code, same minute, re-posted as USER SUBMITTED) and Rainbet
+        vs Shuffle 8-char codes posted under two platforms."""
+        with self._lock:
+            self._sync_from_disk()
+            c = code.strip()
+            if self._get_code_key(c) in self.seen_codes:
+                return True
+            for k in self.seen_codes:
+                if k.endswith(f":{c}"):
+                    return True
+            return False
+
+    def replace_code(self, old_code: str, new_code: str) -> bool:
+        """Gamba correction helper: a 'OOOOPS MY BAD' correction wins over
+        the earlier code. Removes all tracked keys for old_code so the
+        corrected code is not blocked by the superseded one."""
+        with self._lock:
+            old = old_code.strip()
+            removed = [k for k in self.seen_codes if k.endswith(f":{old}") or k == self._get_code_key(old)]
+            for k in removed:
+                del self.seen_codes[k]
+            if removed:
+                self.save()
+            return bool(removed)
+
     def _get_key(self, platform: str, code: str, source_url: str = "") -> str:
         """
         Creates a case-sensitive tracking key preserving exact code casing.
@@ -70,9 +102,11 @@ class CodeTracker:
     def is_seen(self, platform: str, code: str, source_url: str = "") -> bool:
         """
         Checks if a code has already been seen for a given platform (case-sensitive and thread-safe).
+        Dedup order: exact code string FIRST (any platform), then platform.
         Includes intelligent cross-platform deduplication:
-        - Dual Stake vs Stake.us vs Stake.com
+        - Dual Stake vs Stake.us vs Stake.com (verified dual only)
         - Shuffle.us vs Shuffle.com
+        - Rainbet / Rainbet.us vs Shuffle (shared 8-char format)
         - VIP / Event prefix matching
         """
         with self._lock:
@@ -80,6 +114,22 @@ class CodeTracker:
             c = code.strip()
             p = platform.strip()
             c_upper = c.upper()
+
+            # 0. Exact code string, ANY platform, first. A code seen as
+            # Rainbet must not re-post as Shuffle, a Stake code must not
+            # re-post as a VERIFICATION FAILED USER SUBMITTED copy, etc.
+            # Event codes (CHECK_IMAGE / WEEKLY_BOOST / etc.) are exempt:
+            # they use source_url as a discriminator and are checked below.
+            _is_event = (
+                "CHECK_IMAGE" in c_upper
+                or c_upper.startswith("WEEKLY_BOOST")
+                or c_upper.startswith("MONTHLY_BONUS")
+                or c_upper.startswith("VIP_")
+                or c_upper.startswith("DEGEN_DROP")
+                or c_upper.startswith("QZINO_EVENT")
+            )
+            if not _is_event and self.is_duplicate_code(c):
+                return True
 
             # 1. Exact key match
             exact_key = self._get_key(p, c, source_url)
@@ -124,6 +174,18 @@ class CodeTracker:
                 if f"Shuffle.us:{c}" in self.seen_codes or f"Shuffle.com:{c}" in self.seen_codes:
                     return True
 
+            # 6. Cross-Platform Rainbet vs Shuffle Deduplication
+            # Both use the shared 8-char uppercase format. A code seen as
+            # Rainbet.us / Rainbet must not re-post as Shuffle, and vice versa.
+            if p in ["Rainbet.us", "Rainbet", "Shuffle.us", "Shuffle.com"]:
+                if (
+                    f"Rainbet.us:{c}" in self.seen_codes
+                    or f"Rainbet:{c}" in self.seen_codes
+                    or f"Shuffle.us:{c}" in self.seen_codes
+                    or f"Shuffle.com:{c}" in self.seen_codes
+                ):
+                    return True
+
             return False
 
     def is_item_seen(self, item: BonusCodeItem) -> bool:
@@ -158,6 +220,8 @@ class CodeTracker:
             key = self._get_key(item.platform.value, item.code, item.source_url)
             item_dict = item.to_dict()
             self.seen_codes[key] = item_dict
+            # Code-only alias: the primary dedup key for is_duplicate_code.
+            self.seen_codes[self._get_code_key(item.code)] = item_dict
 
             # Store cross-platform keys to prevent duplicate detection across different source feeds
             c = item.code.strip()
@@ -174,6 +238,12 @@ class CodeTracker:
             elif item.platform == Platform.STAKE_COM_VIP_NOTICES:
                 self.seen_codes[f"Stake.com - VIP Notices:{c}"] = item_dict
             elif item.platform in (Platform.SHUFFLE_US, Platform.SHUFFLE_COM):
+                self.seen_codes[f"Shuffle.us:{c}"] = item_dict
+                self.seen_codes[f"Shuffle.com:{c}"] = item_dict
+            elif item.platform in (Platform.RAINBET, Platform.RAINBET_US):
+                # Rainbet aliases also cover Shuffle: shared 8-char format.
+                self.seen_codes[f"Rainbet:{c}"] = item_dict
+                self.seen_codes[f"Rainbet.us:{c}"] = item_dict
                 self.seen_codes[f"Shuffle.us:{c}"] = item_dict
                 self.seen_codes[f"Shuffle.com:{c}"] = item_dict
 

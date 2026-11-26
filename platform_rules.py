@@ -101,13 +101,15 @@ PLATFORM_RULES: List[Dict] = [
         "sources": [
             "ballislife", "thespike.gg", "gamechampions us",
             "sportsgrid stake.us", "vegasinsider", "deadspin",
-            "esportsbetting us", "stake.us telegram", "stakeus",
+            "esportsbetting us", "esportsbetting", "dimers", "stake.us telegram", "stakeus",
         ],
         "code_regexes": [
             (re.compile(r"^BIL[A-Z0-9]{7}$"), "Ballislife"),
             (re.compile(r"^SPIKEUS[A-Za-z0-9]{8}$"), "TheSpike.gg"),
-            (re.compile(r"^stakeus[a-z0-9]{12}$", re.I), "VegasInsider"),
+            (re.compile(r"^stakeus[a-z0-9]{10,}$", re.I), "Stake.us prefix (fixed: was {12}, most real codes are longer)"),
             (re.compile(r"^ESBUS[A-Z0-9]+$"), "EsportsBetting US"),
+            (re.compile(r"^DIMERS[A-Z0-9]{8,}$"), "Dimers"),
+            (re.compile(r"^BIL[A-Z0-9]{7,}$"), "Ballislife (lenient)"),
             (re.compile(r"^(?:SPORTS(?:GR|\d+GRID)|SGRID|SG\d+)[A-Za-z0-9]+$"), "SportsGrid"),
             (re.compile(r"^DSN[A-Z0-9]{6,}$", re.I), "Deadspin"),
             (re.compile(r"^LatestDrops\d+[a-z]+$", re.I), "Deadspin"),
@@ -135,7 +137,7 @@ PLATFORM_RULES: List[Dict] = [
             # FreeTips PascalCase drops (validated by source/keyword context)
             (re.compile(r"^[A-Z][a-z]+(?:[A-Z][a-z]+){1,3}$"), "FreeTips PascalCase"),
         ],
-        "claim_url": "https://stake.com/settings/offers?type=code&code={code}&currency=btc&modal=redeemBonus",
+        "claim_url": "https://stake.com/settings/offers?type=code&code={code}&currency=ltc&modal=redeemBonus",
         "claim_note": None,
     },
     # ── goated ──────────────────────────────────────────────────────────────
@@ -151,7 +153,8 @@ PLATFORM_RULES: List[Dict] = [
         ],
         "code_regexes": [
             (re.compile(r"^(?:GOATED|GOAT)[A-Za-z0-9_-]{3,20}$", re.I), "Goated prefix"),
-            (re.compile(r"^[A-Z0-9_-]{4,24}$"), "Goated context"),
+            # REMOVED 2026-11-26: generic 4-to-24-char context pattern.
+            # It matched any 8-char Rainbet/Shuffle code. Prefix-only now.
         ],
         "claim_url": "https://www.goated.com",
         "claim_note": 'Click "Redeem Code" on Goated.com',
@@ -169,7 +172,8 @@ PLATFORM_RULES: List[Dict] = [
         ],
         "code_regexes": [
             (re.compile(r"^(?:DEGEN|DGN)[A-Za-z0-9_-]{3,20}$", re.I), "Degen prefix"),
-            (re.compile(r"^[A-Z0-9_-]{4,24}$"), "Degen context"),
+            # REMOVED 2026-11-26: generic 4-to-24-char context pattern.
+            # It matched any 8-char Rainbet/Shuffle code. Prefix-only now.
         ],
         "claim_url": "https://degen.com",
         "claim_note": 'Redeem via Rewards / Code modal on Degen.com',
@@ -181,6 +185,8 @@ PLATFORM_RULES: List[Dict] = [
         "sources": ["shuffle.us telegram", "codestats shuffle.us", "shuffleus"],
         "code_regexes": [
             (re.compile(r"^shuffleus[a-z0-9]+$", re.I), "Shuffle.us prefix"),
+            # SHARED FORMAT (8-char) - keyword/app/footer required, see Stage 2.
+            (re.compile(r"^[A-Z0-9]{8}$"), "SHARED FORMAT 8-char Shuffle.us"),
         ],
         "claim_url": "https://shuffle.us/vip-program?modal=redeem",
         "claim_note": None,
@@ -198,6 +204,8 @@ PLATFORM_RULES: List[Dict] = [
         ],
         "code_regexes": [
             (re.compile(r"^shuffle(?:com)?[a-z0-9]+$", re.I), "Shuffle.com prefix"),
+            # SHARED FORMAT (8-char) - keyword/app/footer required, see Stage 2.
+            (re.compile(r"^[A-Z0-9]{8}$"), "SHARED FORMAT 8-char Shuffle.com"),
         ],
         "claim_url": "https://shuffle.com/vip-program?modal=redeem",
         "claim_note": None,
@@ -209,6 +217,9 @@ PLATFORM_RULES: List[Dict] = [
         "sources": ["rainbet.us telegram", "rainbet us"],
         "code_regexes": [
             (re.compile(r"^(?:RBUS|RAINBETUS)[A-Za-z0-9_-]+$", re.I), "Rainbet.us prefix"),
+            # SHARED FORMAT (8-char) - keyword/app/footer required, see Stage 2.
+            # Footer handle is @rainbetuscodes / @rainbetusvip.
+            (re.compile(r"^[A-Z0-9]{8}$"), "SHARED FORMAT 8-char Rainbet.us"),
         ],
         "claim_url": "https://rainbet.us",
         "claim_note": None,
@@ -223,6 +234,8 @@ PLATFORM_RULES: List[Dict] = [
         ],
         "code_regexes": [
             (re.compile(r"^(?:RB|RAINBET)[A-Za-z0-9_-]+$", re.I), "Rainbet prefix"),
+            # SHARED FORMAT - keyword/app/footer required, see Stage 2.
+            (re.compile(r"^[A-Z0-9]{6,12}$"), "SHARED FORMAT Rainbet"),
         ],
         "claim_url": "https://rainbet.com",
         "claim_note": None,
@@ -234,6 +247,9 @@ PLATFORM_RULES: List[Dict] = [
         "sources": ["thrill telegram", "codestats thrill", "thrill official"],
         "code_regexes": [
             (re.compile(r"^THRILL[A-Za-z0-9_-]+$", re.I), "Thrill prefix"),
+            # SHARED FORMAT (10-char) - app/footer required, see Stage 2.
+            # Do not assume Thrill from 10-char format alone.
+            (re.compile(r"^[A-Z0-9]{10}$"), "SHARED FORMAT 10-char Thrill"),
         ],
         "claim_url": "https://thrill.com",
         "claim_note": None,
@@ -256,6 +272,8 @@ PLATFORM_RULES: List[Dict] = [
         "sources": ["gamba telegram", "gamba official"],
         "code_regexes": [
             (re.compile(r"^GAMBA[A-Za-z0-9_-]+$", re.I), "Gamba prefix"),
+            # Gamba format, matched against the emoji-stripped code (see Stage 2).
+            (re.compile(r"^[a-z0-9]{9,17}$"), "Gamba format (emoji-stripped)"),
         ],
         "claim_url": "https://gamba.com",
         "claim_note": None,
@@ -267,6 +285,8 @@ PLATFORM_RULES: List[Dict] = [
         "sources": ["razed telegram", "razed official"],
         "code_regexes": [
             (re.compile(r"^RAZED[A-Za-z0-9_-]+$", re.I), "Razed prefix"),
+            # Usually ends "rzd" - NOT a rule (lmd3c8qtxfr is the exception).
+            (re.compile(r"^[a-z0-9]{9,12}$"), "Razed format"),
         ],
         "claim_url": "https://razed.com",
         "claim_note": None,
@@ -289,6 +309,17 @@ _RE_CHAMP = re.compile(r"^CHAMP[A-Z0-9]{8}$")
 
 # FreeTips PascalCase pattern (only valid when stake.com source/keyword present)
 _RE_FREETIPS_PASCAL = re.compile(r"^[A-Z][a-z]+(?:[A-Z][a-z]+){1,3}$")
+
+# Codes verified (by both claim links AND both platforms in the source feed)
+# to be genuinely dual-platform. Only "bonusbuyspins" was verified dual in
+# the Nov 21-26, 2026 Ctrl Alt Delete window. Every other code that merely
+# lists both stake.us and stake.com links is AMBIGUOUS, not dual.
+VERIFIED_DUAL_CODES = frozenset({"bonusbuyspins"})
+
+# Example ambiguous user-submitted Stake codes, Nov 24-26, 2026 (both links
+# listed as candidates, neither platform verified): samurai88y11, ninja3ty5,
+# shadow8ii33, kairosaa99ii, tuvrd7p5, 7wamg2cc, 7lktqwha, hkyizm1u.
+# Do not hard-code the list - ambiguity is decided by the Stage 1 rule below.
 
 # ---------------------------------------------------------------------------
 # Build fast lookup indexes
@@ -333,11 +364,15 @@ def classify_platform(
     src_lower = (source_name or "").strip().lower()
 
     # ── Stage 1: Explicit keyword / domain ──────────────────────────────────
-    # Check for dual-stake first (both present)
+    # Both stake.us and stake.com present does NOT mean a verified dual drop.
+    # Only a code in VERIFIED_DUAL_CODES is dual_stake; everything else with
+    # both links is "ambiguous_stake" - both claim links are candidates only.
     has_stake_us = bool(re.search(r"stake\.us|stakeus|stake-us", t_lower))
     has_stake_com = bool(re.search(r"stake\.com|stakecom|stake-com", t_lower))
     if has_stake_us and has_stake_com:
-        return "dual_stake"
+        if (code or "").strip().lower() in VERIFIED_DUAL_CODES:
+            return "dual_stake"
+        return "ambiguous_stake"
     if has_stake_us:
         return "stake.us"
     if has_stake_com:
@@ -361,16 +396,24 @@ def classify_platform(
             return pid
 
     # ── Stage 2: Unambiguous code-prefix regex ───────────────────────────────
+    # Gamba codes are emoji-obfuscated in the embed ("Remove the emoji to
+    # claim it"); strip non-alphanumeric characters before format matching.
+    code_stripped = re.sub(r"[^A-Za-z0-9_-]", "", code or "")
     for rule in PLATFORM_RULES:
         pid = rule["id"]
-        # Skip context-only regexes for goated/degen/shuffle at this stage
-        if pid in ("goated", "degen", "shuffle.us", "shuffle.com"):
-            # Only match explicit prefix patterns (first regex in list)
-            regexes = rule["code_regexes"][:1]
-        else:
-            regexes = rule["code_regexes"]
-        for pattern, _ in regexes:
-            if pattern.match(code):
+        regexes = rule["code_regexes"]
+        for pattern, note in regexes:
+            # SHARED FORMAT regexes (8-char Rainbet/Shuffle, 10-char Thrill,
+            # 6-12-char Rainbet) must NEVER route on format alone. They only
+            # match when the platform keyword / app / footer / source is also
+            # present in the text or source name.
+            if note.startswith("SHARED FORMAT"):
+                _kw = pid.replace(".", "")
+                if _kw not in t_lower and _kw not in src_lower and pid not in t_lower:
+                    continue
+            # Gamba / Razed lowercase formats match against the emoji-stripped code.
+            _target = code_stripped if pid in ("gamba", "razed") else code
+            if pattern.match(_target):
                 # FreeTips PascalCase: only valid with stake.com source/keyword
                 if pid == "stake.com" and _RE_FREETIPS_PASCAL.match(code):
                     if not (
@@ -454,6 +497,7 @@ def platform_id_to_model_value(platform_id: str) -> str:
         "stake.us": "Stake.us",
         "stake.com": "Stake.com",
         "dual_stake": "Stake.us & Stake.com",
+        "ambiguous_stake": "Stake.us & Stake.com (ambiguous)",
         "goated": "Goated",
         "degen": "Degen",
         "shuffle.us": "Shuffle.us",

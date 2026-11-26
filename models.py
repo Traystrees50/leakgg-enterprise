@@ -28,6 +28,9 @@ class Platform(str, Enum):
     DEGEN = "Degen"
     GOATED = "Goated"
     DUAL_STAKE = "Stake.us & Stake.com"
+    # Ambiguous Stake: both stake.us and stake.com links are listed as
+    # candidates, neither platform is verified. NOT a verified dual drop.
+    AMBIGUOUS_STAKE = "Stake.us & Stake.com (ambiguous)"
     THRILL = "THRILL"
     WINNA = "WINNA"
     GAMBA = "GAMBA"
@@ -37,6 +40,10 @@ class Platform(str, Enum):
     @classmethod
     def from_str(cls, text: str) -> "Platform":
         t = text.lower()
+        # Step 0: Ambiguous must be checked BEFORE dual. A text that merely
+        # mentions both stake.us and stake.com is ambiguous, not verified dual.
+        if "ambiguous" in t:
+            return cls.AMBIGUOUS_STAKE
         # Step 1: Dual-platform must be checked first
         if "dual" in t or ("stake.us" in t and "stake.com" in t) or ("stake us" in t and "stake com" in t):
             return cls.DUAL_STAKE
@@ -90,6 +97,7 @@ class Platform(str, Enum):
             Platform.DEGEN: COLOR_DEGEN,
             Platform.GOATED: COLOR_GOATED,
             Platform.DUAL_STAKE: COLOR_DUAL_STAKE,
+            Platform.AMBIGUOUS_STAKE: COLOR_DUAL_STAKE,
             Platform.THRILL: COLOR_THRILL,
             Platform.WINNA: COLOR_WINNA,
             Platform.GAMBA: COLOR_GAMBA,
@@ -112,6 +120,7 @@ class Platform(str, Enum):
             Platform.DEGEN: "🔥 ⚡",
             Platform.GOATED: "🐐 👑",
             Platform.DUAL_STAKE: "🎰 🌐",
+            Platform.AMBIGUOUS_STAKE: "🎰 🌐",
             Platform.THRILL: "🎢 ⚡",
             Platform.WINNA: "🏆 🎁",
             Platform.GAMBA: "🎲 🟢",
@@ -134,6 +143,7 @@ class Platform(str, Enum):
             Platform.DEGEN: "<@&1547761003775918130>",
             Platform.GOATED: "<@&1423077998805913680>",
             Platform.DUAL_STAKE: "<@&1268212613234298980> <@&1423076922337792094>",
+            Platform.AMBIGUOUS_STAKE: "<@&1268212613234298980> <@&1423076922337792094>",
             Platform.THRILL: "@THRILLCODES",
             Platform.WINNA: "@WINNACODES",
             Platform.GAMBA: "@GAMBACODES",
@@ -173,6 +183,15 @@ class BonusCodeItem:
     is_affiliate: bool = True
     is_highroller: bool = False
     is_dual_stake: bool = False
+    # Original source (Ctrl Alt Delete / CodeStats, Nov 2026). Only
+    # #low-wager-codes states a per-code original source, as a site name.
+    # All other CodeStats codes: "CodeStats.gg feed", per-code origin not stated.
+    original_source: Optional[str] = None
+    original_source_type: Optional[str] = None  # affiliate_site | codestats_feed | community_submission
+    original_source_url: Optional[str] = None
+    per_code_origin_not_stated: bool = False
+    footer_handle: Optional[str] = None  # e.g. @rainbetuscodes / @rainbetusvip
+    is_ambiguous_stake: bool = False
     claims_count: Optional[str] = None
     currency: Optional[str] = None
     custom_redeem_link: Optional[str] = None
@@ -184,6 +203,44 @@ class BonusCodeItem:
     description: Optional[str] = None
     event_datetime: Optional[datetime] = None
     detected_at: str = field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+    # Affiliate review sites that appear as "Source:" in #low-wager-codes,
+    # with the repo-mapped URL where one exists (None = name only in Discord).
+    _AFFILIATE_SOURCE_URLS = {
+        "ballislife": "https://www.ballislife.com/betting/reviews/stake-us/bonus-drops/",
+        "gamechampions us": "https://www.gamechampions.com/en/reviews/stake-us/bonus-drop-codes/",
+        "gamechampions": "https://www.gamechampions.com/en/reviews/stake-com/bonus-drop-codes/",
+        "dimers": None,
+        "sportsgrid": None,
+        "freetips": None,
+        "esportsbetting": None,
+        "esportsbetting com": None,
+    }
+
+    def __post_init__(self) -> None:
+        # Infer original_source from source_name when not set explicitly.
+        # Never invent a per-code origin: CodeStats codes get the feed as
+        # their source, with per_code_origin_not_stated=True.
+        if self.original_source is not None:
+            return
+        _src = (self.source_name or "").strip().lower()
+        if _src in self._AFFILIATE_SOURCE_URLS:
+            self.original_source = self.source_name.strip()
+            self.original_source_type = "affiliate_site"
+            self.original_source_url = self._AFFILIATE_SOURCE_URLS[_src]
+            self.per_code_origin_not_stated = False
+        elif "community submission" in _src or "user submitted" in _src:
+            self.original_source = "community submission via #submit-stake-code"
+            self.original_source_type = "community_submission"
+            self.original_source_url = None
+            self.per_code_origin_not_stated = True
+        elif "codestats" in _src:
+            self.original_source = "CodeStats.gg feed"
+            self.original_source_type = "codestats_feed"
+            self.original_source_url = "https://codestats.gg/recent"
+            self.per_code_origin_not_stated = True
+        if self.platform == Platform.AMBIGUOUS_STAKE:
+            self.is_ambiguous_stake = True
 
     @property
     def clean_code(self) -> str:
@@ -224,6 +281,10 @@ class BonusCodeItem:
         elif self.platform == Platform.GOATED:
             return "https://goated.com/?r=selfmade"
         elif self.platform == Platform.DUAL_STAKE:
+            return f"https://stake.us/settings/offers?currency=sweeps&type=drop&code={encoded_code}&modal=redeemBonus"
+        elif self.platform == Platform.AMBIGUOUS_STAKE:
+            # Candidate link only - see redeem_link_us / redeem_link_com for
+            # the other candidate. The embed must label both as candidates.
             return f"https://stake.us/settings/offers?currency=sweeps&type=drop&code={encoded_code}&modal=redeemBonus"
         elif self.platform == Platform.THRILL:
             return "https://thrill.com/?r=selfmade"
@@ -312,6 +373,11 @@ class BonusCodeItem:
             is_dual_stake=False,
             claims_count=self.claims_count,
             currency="sweeps",
+            original_source=self.original_source,
+            original_source_type=self.original_source_type,
+            original_source_url=self.original_source_url,
+            per_code_origin_not_stated=self.per_code_origin_not_stated,
+            footer_handle=self.footer_handle,
             custom_redeem_link=self.custom_redeem_link_us or self.redeem_link_us,
             image_url=self.image_url,
             event_type=self.event_type,
@@ -339,6 +405,11 @@ class BonusCodeItem:
             is_dual_stake=False,
             claims_count=self.claims_count,
             currency="ltc",
+            original_source=self.original_source,
+            original_source_type=self.original_source_type,
+            original_source_url=self.original_source_url,
+            per_code_origin_not_stated=self.per_code_origin_not_stated,
+            footer_handle=self.footer_handle,
             custom_redeem_link=self.custom_redeem_link_com or self.redeem_link_com,
             image_url=self.image_url,
             event_type=self.event_type,
@@ -357,8 +428,14 @@ class BonusCodeItem:
             "is_highroller": self.is_highroller,
             "is_dual_stake": self.is_dual_stake,
             "redeem_link": self.redeem_link,
-            "redeem_link_us": self.redeem_link_us if self.is_dual_stake or self.platform == Platform.DUAL_STAKE else None,
-            "redeem_link_com": self.redeem_link_com if self.is_dual_stake or self.platform == Platform.DUAL_STAKE else None,
+            "redeem_link_us": self.redeem_link_us if self.is_dual_stake or self.is_ambiguous_stake or self.platform in (Platform.DUAL_STAKE, Platform.AMBIGUOUS_STAKE) else None,
+            "redeem_link_com": self.redeem_link_com if self.is_dual_stake or self.is_ambiguous_stake or self.platform in (Platform.DUAL_STAKE, Platform.AMBIGUOUS_STAKE) else None,
+            "is_ambiguous_stake": self.is_ambiguous_stake,
+            "original_source": self.original_source,
+            "original_source_type": self.original_source_type,
+            "original_source_url": self.original_source_url,
+            "per_code_origin_not_stated": self.per_code_origin_not_stated,
+            "footer_handle": self.footer_handle,
             "affiliate_signup_link": self.affiliate_signup_link,
             "source_url": self.source_url,
             "source_name": self.source_name,

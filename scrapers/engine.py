@@ -66,7 +66,33 @@ class ScraperEngine:
             new_items: List[BonusCodeItem] = []
             batch_seen = set()
 
+            batch_seen_codes = set()
             for item in items:
+                # 0. Dedup by exact code string, case-sensitive, FIRST.
+                # A code already seen on any platform (including a
+                # VERIFICATION FAILED re-post in #stake-codes, or a Rainbet
+                # code re-posted as Shuffle) is a duplicate, not a new drop.
+                _c0 = item.code.strip()
+                if _c0 in batch_seen_codes or self.tracker.is_duplicate_code(_c0):
+                    logger.debug(f"Skipping duplicate code '{_c0}' (exact code already seen)")
+                    continue
+                # NOTE: _c0 is added to batch_seen_codes only after it is
+                # successfully marked seen below, so a stale/outdated first
+                # copy does not block a fresh copy of the same code.
+
+                # 0b. VERIFICATION FAILED re-posts are duplicates of the
+                # BONUS DROP, not new codes and not proof the drop is invalid.
+                _desc = (item.description or "") + " " + (item.amount_value or "")
+                if "VERIFICATION FAILED" in _desc.upper():
+                    logger.debug(f"Skipping VERIFICATION FAILED duplicate '{_c0}'")
+                    continue
+
+                # 0c. Do not infer missing fields, and do not treat "$000"
+                # as $0. Ballislife low-wager codes show Amount: $000 in
+                # Discord while the same code is $5 on codestats.gg.
+                if (item.amount_value or "").strip() in {"$000", "$0", "0"}:
+                    item.amount_value = "Not specified"
+
                 # 1. Enforce strict 4-day age limit across all pipeline items
                 is_recent, age_reason = is_event_recent(
                     dt=item.event_datetime,
@@ -113,17 +139,41 @@ class ScraperEngine:
                     if f"Shuffle.us:{c_clean}" in batch_seen or f"Shuffle.com:{c_clean}" in batch_seen:
                         continue
 
+                # Rainbet vs Shuffle in-batch guard (shared 8-char format).
+                if item.platform in [Platform.RAINBET, Platform.RAINBET_US, Platform.SHUFFLE_US, Platform.SHUFFLE_COM]:
+                    if (
+                        f"Rainbet:{c_clean}" in batch_seen
+                        or f"Rainbet.us:{c_clean}" in batch_seen
+                        or f"Shuffle.us:{c_clean}" in batch_seen
+                        or f"Shuffle.com:{c_clean}" in batch_seen
+                    ):
+                        continue
+
+                # Gamba correction: a "OOOOPS MY BAD" / correction message
+                # supersedes the earlier code for that drop. The corrected
+                # code (this item) wins; the earlier code must not be used
+                # again. Tracked via tracker.replace_code by the caller when
+                # the superseded code is known; here we at least log it.
+                if "OOOOPS MY BAD" in _desc.upper() or "CORRECTION" in _desc.upper():
+                    logger.info(f"Gamba correction drop '{c_clean}' - corrected code wins over earlier code")
+
                 # 4. Atomically check if already seen and mark as seen (prevents race conditions)
                 if self.tracker.mark_seen_if_new(item):
                     logger.info(f"🔥 NEW CODE FOUND! [{item.platform.value}] Code: {item.code} | Value: {item.amount_value} | Source: {item.source_name}")
                     
                     batch_key = self.tracker._get_key(item.platform.value, item.code, item.source_url)
                     batch_seen.add(batch_key)
+                    batch_seen_codes.add(item.code.strip())
                     if item.platform in [Platform.STAKE_US, Platform.STAKE_COM, Platform.DUAL_STAKE, Platform.STAKE_US_VIP_NOTICES, Platform.STAKE_COM_VIP_NOTICES]:
                         batch_seen.add(f"Dual Stake:{c_clean}")
                         batch_seen.add(f"Stake.us:{c_clean}")
                         batch_seen.add(f"Stake.com:{c_clean}")
                     if item.platform in [Platform.SHUFFLE_US, Platform.SHUFFLE_COM]:
+                        batch_seen.add(f"Shuffle.us:{c_clean}")
+                        batch_seen.add(f"Shuffle.com:{c_clean}")
+                    if item.platform in [Platform.RAINBET, Platform.RAINBET_US]:
+                        batch_seen.add(f"Rainbet:{c_clean}")
+                        batch_seen.add(f"Rainbet.us:{c_clean}")
                         batch_seen.add(f"Shuffle.us:{c_clean}")
                         batch_seen.add(f"Shuffle.com:{c_clean}")
 

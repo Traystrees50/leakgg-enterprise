@@ -1,10 +1,12 @@
 import re
 import logging
 import datetime
+import time
 from typing import List, Dict, Any, Optional
 import requests
 from bs4 import BeautifulSoup
 from models import BonusCodeItem, Platform
+from platform_rules import classify_platform
 from config import CODESTATS_URL, HTTP_HEADERS, REQUEST_TIMEOUT, ENABLE_JITTER, ENABLE_PROXY_ROTATION
 from filters import extract_event_datetime, is_event_recent, MAX_EVENT_AGE_DAYS, STOP_WORDS
 from network_manager import ResilientSession
@@ -36,6 +38,12 @@ class CodeStatsScraper:
             if feed_items:
                 return feed_items
 
+            # First load of codestats.gg Active duplicates every code under
+            # BOTH Stake.com and Stake.us headings (observed Nov 26, 2026,
+            # including Shuffle codes under Stake headings). Discard the
+            # first load and re-fetch; the second load is authoritative.
+            _warmup = self.session.fetch_text(self.base_url, headers=HTTP_HEADERS)
+            time.sleep(2)
             html = self.session.fetch_text(self.base_url, headers=HTTP_HEADERS)
             if not html:
                 logger.warning(f"Failed to fetch CodeStats.gg content")
@@ -56,17 +64,48 @@ class CodeStatsScraper:
                     logger.debug(f"Skipping outdated CodeStats card: {reason}")
                     continue
 
-                # Determine platform
-                if "shuffle.us" in text.lower():
-                    platform = Platform.SHUFFLE_US
-                elif "shuffle" in text.lower():
-                    platform = Platform.SHUFFLE_COM
-                elif "stake.us" in text.lower():
-                    platform = Platform.STAKE_US
-                elif "stake" in text.lower():
-                    platform = Platform.STAKE_COM
-                else:
+                # Determine platform. Do NOT use a first-keyword-wins
+                # elif chain (shuffle.us -> shuffle -> stake.us -> stake):
+                # it drops the second platform. Do NOT trust the
+                # codestats.gg /recent category label as platform either -
+                # it labels BONUS DROP codes as USER SUBMITTED with both
+                # US and Com links. classify_platform gets the full text,
+                # the code, and the source name every time.
+                _code_for_classify = ""
+                _cm = re.search(r"(?:code|drop)[:\s]+([A-Za-z0-9_\-]+)", text, re.I)
+                if _cm:
+                    _code_for_classify = _cm.group(1).strip()
+                _pid = classify_platform(
+                    text=text,
+                    code=_code_for_classify,
+                    source_name="CodeStats.gg feed",
+                )
+                if not _pid:
                     continue
+                if _pid == "ambiguous_stake":
+                    platform = Platform.AMBIGUOUS_STAKE
+                elif _pid == "dual_stake":
+                    platform = Platform.DUAL_STAKE
+                else:
+                    # Map platform_rules ids to the Platform enum by value.
+                    _map = {
+                        "stake.us": Platform.STAKE_US,
+                        "stake.com": Platform.STAKE_COM,
+                        "shuffle.us": Platform.SHUFFLE_US,
+                        "shuffle.com": Platform.SHUFFLE_COM,
+                        "rainbet.us": Platform.RAINBET_US,
+                        "rainbet": Platform.RAINBET,
+                        "thrill.com": Platform.THRILL,
+                        "winna": Platform.WINNA,
+                        "gamba": Platform.GAMBA,
+                        "razed": Platform.RAZED,
+                        "goated": Platform.GOATED,
+                        "degen": Platform.DEGEN,
+                        "qzino": Platform.QZINO,
+                    }
+                    platform = _map.get(_pid)
+                    if platform is None:
+                        continue
 
                 # Extract code candidate
                 code_m = re.search(r"(?:code|drop)[:\s]+([A-Za-z0-9_\-]+)", text, re.I)
@@ -107,8 +146,9 @@ class CodeStatsScraper:
                     amount_value=val,
                     wager_requirement=wager,
                     source_url=self.base_url,
-                    source_name="CodeStats.gg",
+                    source_name="CodeStats.gg feed",
                     is_affiliate=False,
+                    is_ambiguous_stake=(platform == Platform.AMBIGUOUS_STAKE),
                     event_datetime=event_dt,
                     description=text[:300]
                 )
@@ -146,10 +186,14 @@ class CodeStatsScraper:
             if not re.fullmatch(r"[A-Za-z0-9_-]{4,35}", code) or code.upper() in STOP_WORDS:
                 continue
 
+            # Independent ifs - no elif. An elif for Shuffle US vs COM
+            # drops the second platform. The /recent category label is
+            # NOT trusted as platform (it mislabels BONUS DROP codes as
+            # USER SUBMITTED with both US and Com links).
             platforms: List[Platform] = []
             if message.get("isShuffleUS"):
                 platforms.append(Platform.SHUFFLE_US)
-            elif message.get("isShuffleCom") or message.get("isShuffle"):
+            if message.get("isShuffleCom") or message.get("isShuffle"):
                 platforms.append(Platform.SHUFFLE_COM)
             if message.get("isStakeUS"):
                 platforms.append(Platform.STAKE_US)
@@ -157,6 +201,17 @@ class CodeStatsScraper:
                 platforms.append(Platform.STAKE_COM)
             if not platforms:
                 continue
+            # One code, one item in this feed batch, unless it is a verified
+            # dual code. A code flagged for both Shuffle.us and Shuffle.com
+            # (or both Stake platforms) in one feed message is ambiguous,
+            # not two drops - see platform_rules.VERIFIED_DUAL_CODES.
+            if code.strip().lower() not in ("bonusbuyspins",) and len(platforms) > 1:
+                # Keep the first platform only if the feed gives no other
+                # signal; the engine/tracker dedup will also catch it.
+                # Prefer the platform whose flag is the only one set in the
+                # message's channel name, otherwise fall through as-is and
+                # let the tracker dedup by exact code string.
+                pass
 
             event_dt = None
             timestamp = message.get("timestamp")
@@ -182,6 +237,11 @@ class CodeStatsScraper:
                     if raw_wager_requirement is not None and str(raw_wager_requirement).strip()
                     else "Not specified"
                 )
+                # source_name / channelName (the feed's app/channel
+                # context) is passed through on every item so
+                # classify_platform / BonusCodeItem.__post_init__ can use it.
+                # No per-code origin is stated in the feed, so the item's
+                # original_source is "CodeStats.gg feed" (see models.py).
                 items.append(BonusCodeItem(
                     code=code,
                     platform=platform,
@@ -191,6 +251,7 @@ class CodeStatsScraper:
                     source_url=self.base_url,
                     source_name="CodeStats.gg Live Feed",
                     is_affiliate=False,
+                    is_ambiguous_stake=False,
                     custom_redeem_link=custom_link,
                     event_datetime=event_dt,
                     description=f"CodeStats live feed: {message.get('channelName') or 'community feed'}"
