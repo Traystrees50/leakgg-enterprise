@@ -788,12 +788,13 @@ def create_dashboard_embed(manager: DashboardManager, bot: commands.Bot, subscri
 # Dashboard Interactive Modals
 # ----------------------------------------------------
 class AddChannelModal(discord.ui.Modal):
-    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None):
+    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(title="Add Labeled Channel")
         self.platforms = platforms
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
 
         self.channels_input = discord.ui.TextInput(
             label="Channel ID",
@@ -813,6 +814,10 @@ class AddChannelModal(discord.ui.Modal):
         self.add_item(self.label_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         raw_val = self.channels_input.value.strip().replace("<#", "").replace(">", "")
         label = self.label_input.value.strip()
         try:
@@ -839,12 +844,13 @@ class AddChannelModal(discord.ui.Modal):
 
 
 class RemoveChannelModal(discord.ui.Modal):
-    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None):
+    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(title="Remove Channel ID")
         self.platforms = platforms
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
 
         self.channel_input = discord.ui.TextInput(
             label="Channel ID to Remove",
@@ -856,6 +862,10 @@ class RemoveChannelModal(discord.ui.Modal):
         self.add_item(self.channel_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         raw_val = self.channel_input.value.strip().replace("<#", "").replace(">", "")
         try:
             cid = int(raw_val)
@@ -878,12 +888,13 @@ class RemoveChannelModal(discord.ui.Modal):
 
 
 class AddWebhookModal(discord.ui.Modal):
-    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None):
+    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(title="Add Labeled Webhook")
         self.platforms = platforms
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
 
         self.webhook_input = discord.ui.TextInput(
             label="Discord Webhook URL",
@@ -903,6 +914,10 @@ class AddWebhookModal(discord.ui.Modal):
         self.add_item(self.label_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         url = self.webhook_input.value.strip()
         label = self.label_input.value.strip()
         if not (url.startswith("https://discord.com/api/webhooks/") or url.startswith("https://discordapp.com/api/webhooks/")):
@@ -927,12 +942,13 @@ class AddWebhookModal(discord.ui.Modal):
 
 
 class RemoveWebhookModal(discord.ui.Modal):
-    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None):
+    def __init__(self, platforms: List[str], manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(title="Remove Webhook URL")
         self.platforms = platforms
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
 
         self.webhook_input = discord.ui.TextInput(
             label="Webhook URL or URL Fragment to Remove",
@@ -944,6 +960,10 @@ class RemoveWebhookModal(discord.ui.Modal):
         self.add_item(self.webhook_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         target = self.webhook_input.value.strip()
         for plat in self.platforms:
             if self.subscriber_uid:
@@ -968,11 +988,12 @@ class RemoveWebhookModal(discord.ui.Modal):
 
 
 class IntervalModal(discord.ui.Modal):
-    def __init__(self, manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None):
+    def __init__(self, manager: DashboardManager, view: "DashboardView", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(title="Adjust Realtime Sweep Interval")
         self.manager = manager
         self.parent_view = view
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
 
         self.interval_input = discord.ui.TextInput(
             label="Scan Interval (in seconds)",
@@ -984,6 +1005,10 @@ class IntervalModal(discord.ui.Modal):
         self.add_item(self.interval_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         try:
             val = int(self.interval_input.value.strip())
             if val < 15:
@@ -1137,10 +1162,11 @@ def _platform_select_options() -> tuple[List[discord.SelectOption], List[discord
 
 
 class GrantAccessModal(discord.ui.Modal):
-    def __init__(self, manager: DashboardManager, view: "DashboardView"):
+    def __init__(self, manager: DashboardManager, view: "DashboardView", invoking_user_id: Optional[int] = None):
         super().__init__(title="Grant Dashboard Access")
         self.manager = manager
         self.parent_view = view
+        self.invoking_user_id = invoking_user_id
 
         self.user_input = discord.ui.TextInput(
             label="User ID or Username",
@@ -1170,6 +1196,10 @@ class GrantAccessModal(discord.ui.Modal):
         self.add_item(self.duration_select)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         raw = self.user_input.value.strip()
         note = self.note_input.value.strip() or "Granted by admin"
 
@@ -1188,10 +1218,11 @@ class GrantAccessModal(discord.ui.Modal):
             ephemeral=True
         )
 class RevokeAccessModal(discord.ui.Modal):
-    def __init__(self, manager: DashboardManager, view: "DashboardView"):
+    def __init__(self, manager: DashboardManager, view: "DashboardView", invoking_user_id: Optional[int] = None):
         super().__init__(title="Revoke Dashboard Access")
         self.manager = manager
         self.parent_view = view
+        self.invoking_user_id = invoking_user_id
         self.user_input = discord.ui.TextInput(
             label="Subscriber User ID",
             placeholder="e.g. 123456789012345678",
@@ -1202,6 +1233,10 @@ class RevokeAccessModal(discord.ui.Modal):
         self.add_item(self.user_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Per-user isolation for dashboard modals
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            await interaction.response.send_message("🔒 This dashboard belongs to another user. Open your own with `/dashboard`.", ephemeral=True)
+            return
         raw = self.user_input.value.strip()
         user_id = int(raw) if raw.isdigit() else raw
         removed = self.manager.remove_subscriber(user_id)
@@ -1297,10 +1332,10 @@ class ActionSelect(discord.ui.Select):
         is_owner = manager.is_owner(uid)
 
         if action == "add_channel":
-            modal = AddChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = AddChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "remove_channel":
-            modal = RemoveChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = RemoveChannelModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "bind_current":
             channel_id = interaction.channel_id
@@ -1324,10 +1359,10 @@ class ActionSelect(discord.ui.Select):
                 ephemeral=True
             )
         elif action == "add_webhook":
-            modal = AddWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = AddWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "remove_webhook":
-            modal = RemoveWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = RemoveWebhookModal(selected_platforms, manager, self.view, subscriber_uid=None if is_owner else uid, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "add_source":
             if not is_owner:
@@ -1402,7 +1437,7 @@ class ActionSelect(discord.ui.Select):
             if not _has_admin_access(interaction.user) and not manager.is_owner(interaction.user.id):
                 await interaction.response.send_message("❌ Only the project owner or server admins can grant access.", ephemeral=True)
                 return
-            modal = GrantAccessModal(manager, self.view)
+            modal = GrantAccessModal(manager, self.view, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "list_subscribers":
             if not _has_admin_access(interaction.user) and not manager.is_owner(interaction.user.id):
@@ -1431,7 +1466,7 @@ class ActionSelect(discord.ui.Select):
             if not _has_admin_access(interaction.user) and not manager.is_owner(interaction.user.id):
                 await interaction.response.send_message("❌ Only the project owner or server admins can revoke access.", ephemeral=True)
                 return
-            await interaction.response.send_modal(RevokeAccessModal(manager, self.view))
+            await interaction.response.send_modal(RevokeAccessModal(manager, self.view, invoking_user_id=self.view.invoking_user_id))
         elif action == "set_interval":
             if not is_owner:
                 await interaction.response.send_message(
@@ -1439,7 +1474,7 @@ class ActionSelect(discord.ui.Select):
                     ephemeral=True
                 )
                 return
-            modal = IntervalModal(manager, self.view, subscriber_uid=None if is_owner else uid)
+            modal = IntervalModal(manager, self.view, subscriber_uid=None if is_owner else uid, invoking_user_id=self.view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif action == "health_check":
             health_mon = HealthMonitor(dashboard_manager=manager)
@@ -1455,12 +1490,13 @@ class DashboardView(discord.ui.View):
     - Grouped action dropdown for routing, sources, testing, access
     - Compact embed display for all content
     """
-    def __init__(self, manager: DashboardManager, bot: commands.Bot, timeout: Optional[float] = 600, initial_section: str = "home", subscriber_uid: Optional[str] = None):
+    def __init__(self, manager: DashboardManager, bot: commands.Bot, timeout: Optional[float] = 600, initial_section: str = "home", subscriber_uid: Optional[str] = None, invoking_user_id: Optional[int] = None):
         super().__init__(timeout=timeout)
         self.manager = manager
         self.bot = bot
         self.current_section = initial_section
         self.subscriber_uid = subscriber_uid
+        self.invoking_user_id = invoking_user_id
         self.selected_platforms: List[str] = ["Stake.us"]
         self.page_index = 0
         
@@ -1495,6 +1531,15 @@ class DashboardView(discord.ui.View):
             self.add_item(QuickActionButton(label="🔔 Notifications", custom_id="action_notifications", style=discord.ButtonStyle.secondary, row=4))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Per-user isolation: only the user who opened the dashboard may interact with it
+        if self.invoking_user_id is not None and interaction.user.id != self.invoking_user_id:
+            embed = discord.Embed(
+                title="🔒 Dashboard Locked",
+                description="This dashboard belongs to another user. Use `/dashboard` to open your own.",
+                color=0xED4245
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return False
         if not self.manager.is_authorized(interaction.user.id) and not _has_admin_access(interaction.user):
             embed = create_unauthorized_embed()
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1805,25 +1850,25 @@ class QuickActionButton(discord.ui.Button):
             if view.subscriber_uid:
                 await interaction.response.send_message("Channel management is owner-controlled.", ephemeral=True)
                 return
-            modal = AddChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            modal = AddChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid, invoking_user_id=view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_remove_channel":
             if view.subscriber_uid:
                 await interaction.response.send_message("Channel management is owner-controlled.", ephemeral=True)
                 return
-            modal = RemoveChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            modal = RemoveChannelModal(view.selected_platforms, view.manager, view, view.subscriber_uid, invoking_user_id=view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_add_webhook":
             if view.subscriber_uid:
                 await interaction.response.send_message("Webhook management is owner-controlled.", ephemeral=True)
                 return
-            modal = AddWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            modal = AddWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid, invoking_user_id=view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_remove_webhook":
             if view.subscriber_uid:
                 await interaction.response.send_message("Webhook management is owner-controlled.", ephemeral=True)
                 return
-            modal = RemoveWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid)
+            modal = RemoveWebhookModal(view.selected_platforms, view.manager, view, view.subscriber_uid, invoking_user_id=view.invoking_user_id)
             await interaction.response.send_modal(modal)
         elif self.custom_id == "action_submitted_codes":
             modal = SubmittedCodesRoutingModal(view.manager, view, view.subscriber_uid)
@@ -2803,7 +2848,7 @@ def run_discord_bot():
         if is_auth:
             uid = str(ctx.author.id)
             is_owner = manager.is_owner(uid)
-            view = DashboardView(manager, bot, subscriber_uid=None if is_owner else uid)
+            view = DashboardView(manager, bot, subscriber_uid=None if is_owner else uid, invoking_user_id=ctx.author.id)
             await ctx.send(view=view, ephemeral=False)
         else:
             embed = create_public_dashboard_embed()
