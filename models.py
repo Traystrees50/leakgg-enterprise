@@ -48,7 +48,7 @@ class Platform(str, Enum):
         # Step 3: Explicit Stake.us / Stake.com keywords — evaluated BEFORE Shuffle
         elif "stake.us" in t or "stakeus" in t or "stake-us" in t or "stake us" in t:
             return cls.STAKE_US
-        elif "stake.com" in t or "stakecom" in t or "stake-com" in t or "stake com" in t or "stake" in t:
+        elif "stake.com" in t or "stakecom" in t or "stake-com" in t or "stake com" in t:
             return cls.STAKE_COM
         # Step 4: Non-Stake platforms
         elif "shuffle.us" in t or "shuffle us" in t or "shuffle_us" in t:

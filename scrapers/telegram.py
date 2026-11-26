@@ -1063,11 +1063,10 @@ class TelegramScraper:
                 if not wager:
                     wager = "Not specified"
             else:
-                platform = Platform.STAKE_US if "sc" in t_lower else Platform.STAKE_COM
-                if not val:
-                    val = "Bonus Drop"
-                if not wager:
-                    wager = "Not specified"
+                # Unknown platform — do NOT default to Stake. Return None so
+                # the caller skips this item rather than misrouting a Shuffle
+                # (or other) code into Stake.us / Stake.com channels.
+                return None
 
         is_hr = (
             "HIGH ROLLER" in t_upper or
