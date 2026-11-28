@@ -1,0 +1,52 @@
+name: Bonus code monitor
+
+on:
+  schedule:
+    # Every 10 minutes. For a private repo (limited free minutes), change to "0 * * * *" for hourly.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bonus-monitor
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore seen-code history
+        uses: actions/cache@v4
+        with:
+          path: seen_codes.json
+          key: seen-codes-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            seen-codes-
+
+      - name: Sweep sources and broadcast new codes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_STAKE_COM: ${{ secrets.DISCORD_WEBHOOK_STAKE_COM }}
+          DISCORD_WEBHOOK_STAKE_US: ${{ secrets.DISCORD_WEBHOOK_STAKE_US }}
+          DISCORD_WEBHOOK_SHUFFLE_COM: ${{ secrets.DISCORD_WEBHOOK_SHUFFLE_COM }}
+          DISCORD_WEBHOOK_SHUFFLE_US: ${{ secrets.DISCORD_WEBHOOK_SHUFFLE_US }}
+          DISCORD_WEBHOOK_QZINO: ${{ secrets.DISCORD_WEBHOOK_QZINO }}
+          DISCORD_WEBHOOK_RAINBET: ${{ secrets.DISCORD_WEBHOOK_RAINBET }}
+          DISCORD_WEBHOOK_DEGEN: ${{ secrets.DISCORD_WEBHOOK_DEGEN }}
+          DISCORD_WEBHOOK_GOATED: ${{ secrets.DISCORD_WEBHOOK_GOATED }}
+        run: python main.py watch --once
